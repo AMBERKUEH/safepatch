@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision';
 
 export interface GestureResult {
@@ -16,13 +16,26 @@ const gestureCommands: Record<string, GestureType> = {
   'Victory': 'victory',
 };
 
+const CONFIRM_FRAMES = 10; // 10 consecutive frames to confirm a gesture
+
 export function useGestureRecognition() {
   const [currentGesture, setCurrentGesture] = useState<GestureType>('none');
+  const [confirmedGesture, setConfirmedGesture] = useState<GestureType>('none');
   const [isActive, setIsActive] = useState(false);
+  const [confidence, setConfidence] = useState(0);
+  const [confirmProgress, setConfirmProgress] = useState(0); // 0 to 1
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const recognizerRef = useRef<GestureRecognizer | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const gestureBufferRef = useRef<GestureType[]>([]);
+
+  // Callbacks for gesture events
+  const onGestureConfirmedRef = useRef<((gesture: GestureType) => void) | null>(null);
+
+  const setOnGestureConfirmed = useCallback((callback: (gesture: GestureType) => void) => {
+    onGestureConfirmedRef.current = callback;
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -89,6 +102,9 @@ export function useGestureRecognition() {
     }
     setIsActive(false);
     setCurrentGesture('none');
+    setConfirmedGesture('none');
+    setConfirmProgress(0);
+    gestureBufferRef.current = [];
   };
 
   const detectGestures = () => {
@@ -112,7 +128,7 @@ export function useGestureRecognition() {
           if (ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const drawingUtils = new DrawingUtils(ctx);
-            
+
             for (const landmarks of results.landmarks) {
               drawingUtils.drawConnectors(
                 landmarks,
@@ -124,18 +140,49 @@ export function useGestureRecognition() {
           }
         }
 
-        // Process gestures
+        // Process gestures with consecutive frame confirmation
         if (results.gestures && results.gestures.length > 0) {
           const detectedGesture = results.gestures[0][0];
           const gestureName = gestureCommands[detectedGesture.categoryName] || 'none';
-          
-          if (detectedGesture.score > 0.7) {
+
+          if (detectedGesture.score > 0.7 && gestureName !== 'none') {
             setCurrentGesture(gestureName);
+            setConfidence(detectedGesture.score);
+
+            // Add to confirmation buffer
+            gestureBufferRef.current.push(gestureName);
+            if (gestureBufferRef.current.length > CONFIRM_FRAMES) {
+              gestureBufferRef.current.shift();
+            }
+
+            // Check if last N frames are the SAME gesture
+            const allSame =
+              gestureBufferRef.current.length >= CONFIRM_FRAMES &&
+              gestureBufferRef.current.every((g) => g === gestureName);
+
+            // Update progress
+            const sameCount = gestureBufferRef.current.filter((g) => g === gestureName).length;
+            setConfirmProgress(sameCount / CONFIRM_FRAMES);
+
+            if (allSame) {
+              setConfirmedGesture(gestureName);
+              gestureBufferRef.current = []; // reset after confirm
+              setConfirmProgress(0);
+
+              // Fire callback
+              onGestureConfirmedRef.current?.(gestureName);
+            }
           } else {
+            gestureBufferRef.current = [];
             setCurrentGesture('none');
+            setConfidence(0);
+            setConfirmProgress(0);
           }
         } else {
+          gestureBufferRef.current = [];
           setCurrentGesture('none');
+          setConfidence(0);
+          setConfirmProgress(0);
         }
       } catch (error) {
         console.error('Gesture detection error:', error);
@@ -149,10 +196,14 @@ export function useGestureRecognition() {
 
   return {
     currentGesture,
+    confirmedGesture,
     isActive,
+    confidence,
+    confirmProgress,
     videoRef,
     canvasRef,
     startCamera,
     stopCamera,
+    setOnGestureConfirmed,
   };
 }

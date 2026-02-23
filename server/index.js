@@ -85,14 +85,28 @@ io.on('connection', (socket) => {
 
   socket.on('hazard', (hazard) => {
     if (hazard && typeof hazard.x === 'number' && typeof hazard.y === 'number') {
-      hazards.push({
+      const newHazard = {
+        hazardId: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         x: hazard.x,
         y: hazard.y,
         width: hazard.width || 50,
         height: hazard.height || 50,
-        type: hazard.type || 'blocked',
-      });
+        type: hazard.type || 'fire',
+        severity: hazard.severity || 0.6,
+        affectedNodes: hazard.affectedNodes || [],
+        timestamp: Date.now(),
+      };
+      hazards.push(newHazard);
       io.emit('hazards', hazards);
+
+      // Broadcast hazard_alert event for graph-based system
+      io.emit('hazard_alert', {
+        hazardId: newHazard.hazardId,
+        type: newHazard.type,
+        severity: newHazard.severity,
+        affectedNodes: newHazard.affectedNodes,
+        position: { x: newHazard.x, y: newHazard.y },
+      });
     }
   });
 

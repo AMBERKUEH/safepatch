@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Navigation, Hand, AlertCircle, LayoutDashboard } from 'lucide-react';
+import { Home, Navigation, AlertCircle, LayoutDashboard } from 'lucide-react';
 import { HomePage } from './components/pages/HomePage';
 import { NavigationPage } from './components/pages/NavigationPage';
-import { GesturePage } from './components/pages/GesturePage';
 import { EmergencyPage } from './components/pages/EmergencyPage';
 import { DashboardPage } from './components/pages/DashboardPage';
 import { FloatingAIAssistant } from './components/FloatingAIAssistant';
 
-type Page = 'home' | 'navigation' | 'gesture' | 'emergency' | 'dashboard';
+type Page = 'home' | 'navigation' | 'emergency' | 'dashboard';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -16,7 +15,6 @@ function App() {
   const navigation = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'navigation', icon: Navigation, label: 'Navigate' },
-    { id: 'gesture', icon: Hand, label: 'Gestures' },
     { id: 'emergency', icon: AlertCircle, label: 'Emergency' },
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   ];
@@ -36,7 +34,6 @@ function App() {
           >
             {currentPage === 'home' && <HomePage />}
             {currentPage === 'navigation' && <NavigationPage />}
-            {currentPage === 'gesture' && <GesturePage />}
             {currentPage === 'emergency' && <EmergencyPage />}
             {currentPage === 'dashboard' && <DashboardPage />}
           </motion.div>
@@ -53,7 +50,7 @@ function App() {
             {navigation.map((item) => {
               const Icon = item.icon;
               const isActive = currentPage === item.id;
-              
+
               return (
                 <button
                   key={item.id}
@@ -61,14 +58,12 @@ function App() {
                   className="flex-1 py-3 flex flex-col items-center gap-1 relative"
                 >
                   <Icon
-                    className={`w-6 h-6 transition-colors ${
-                      isActive ? 'text-blue-600' : 'text-gray-400'
-                    }`}
+                    className={`w-6 h-6 transition-colors ${isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}
                   />
                   <span
-                    className={`text-xs transition-colors ${
-                      isActive ? 'text-blue-600 font-medium' : 'text-gray-500'
-                    }`}
+                    className={`text-xs transition-colors ${isActive ? 'text-blue-600 font-medium' : 'text-gray-500'
+                      }`}
                   >
                     {item.label}
                   </span>

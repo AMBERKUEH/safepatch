@@ -11,6 +11,14 @@ export interface Occupant {
   lastSeen?: number;
 }
 
+export interface HazardAlert {
+  hazardId: string;
+  type: string;
+  severity: number;
+  affectedNodes: string[];
+  position?: { x: number; y: number };
+}
+
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 
 export function useSocket() {
@@ -18,6 +26,7 @@ export function useSocket() {
   const [connected, setConnected] = useState(false);
   const [occupants, setOccupants] = useState<Occupant[]>([]);
   const [hazards, setHazards] = useState<Obstacle[]>([]);
+  const [hazardAlerts, setHazardAlerts] = useState<HazardAlert[]>([]);
   const [buildingArea, setBuildingArea] = useState({ width: 600, height: 400 });
 
   useEffect(() => {
@@ -34,6 +43,9 @@ export function useSocket() {
     });
     s.on('occupants', (list: Occupant[]) => setOccupants(list || []));
     s.on('hazards', (list: Obstacle[]) => setHazards(list || []));
+    s.on('hazard_alert', (alert: HazardAlert) => {
+      setHazardAlerts((prev) => [...prev, alert]);
+    });
 
     setSocket(s);
     return () => {
@@ -69,6 +81,7 @@ export function useSocket() {
     socket,
     occupants,
     hazards,
+    hazardAlerts,
     buildingArea,
     sendPosition,
     sendSOS,
