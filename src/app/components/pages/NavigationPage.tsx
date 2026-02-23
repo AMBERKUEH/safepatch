@@ -24,7 +24,7 @@ const EXIT_IDS = ['exit1', 'exit2'];
 const RECOMPUTE_INTERVAL = 4000; // ms
 
 export function NavigationPage() {
-  const [navMode, setNavMode] = useState<NavigationMode>('MAPPED');
+  const [navMode, setNavMode] = useState<NavigationMode>('VISION');
   const [userNodeId, setUserNodeId] = useState('start');
   const [hazards, setHazards] = useState<HazardZone[]>(DEFAULT_HAZARDS);
   const [routeResult, setRouteResult] = useState<GraphPathResult | null>(null);
@@ -225,13 +225,7 @@ export function NavigationPage() {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
             >
-              <VisionNavigationView
-                pathNodes={pathNodes}
-                turns={routeResult?.turns || []}
-                distance={distance}
-                exitLabel={exitLabel}
-                safetyScore={routeResult?.safetyScore ?? 0}
-              />
+              <VisionNavigationView />
             </motion.div>
           ) : (
             <motion.div

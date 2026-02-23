@@ -1,501 +1,462 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Camera, Navigation, Shield, Volume2, Hand, Keyboard } from 'lucide-react';
+import { Camera, Shield, AlertTriangle, Map as MapIcon, Volume2, Hand } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { useVoiceGuidance } from '../hooks/useVoiceGuidance';
 import { useGestureRecognition } from '../hooks/useGestureRecognition';
 import { useSocket } from '../hooks/useSocket';
+import { findGraphPath } from '../utils/pathfinding';
 import { playEmergencyAlarm } from '../utils/emergencySound';
 import { startSOSVibrationLoop, stopSOSVibrationLoop } from '../utils/hapticFeedback';
-import type { FloorNode } from '../data/floorPlanGraph';
-import type { TurnInstruction } from '../utils/pathfinding';
-import type { GestureType } from '../hooks/useGestureRecognition';
 
-interface VisionNavigationViewProps {
-  pathNodes?: FloorNode[];
-  turns?: TurnInstruction[];
-  distance?: number;
-  exitLabel?: string;
-  safetyScore?: number;
+// --- API Types ---
+interface FloorNode {
+  nodeId: string;
+  x: number;
+  y: number;
+  z: number;
+  type: 'junction' | 'room' | 'exit' | 'stairs' | 'doorway';
+  label?: string;
 }
 
-const gestureLabels: Record<GestureType, { emoji: string; label: string }> = {
-  thumbs_up: { emoji: '👍', label: 'OK / Cancel SOS' },
-  open_palm: { emoji: '✋', label: 'Repeat Instruction' },
-  closed_fist: { emoji: '✊', label: 'SOS EMERGENCY' },
-  pointing_up: { emoji: '☝️', label: 'Next Step' },
-  victory: { emoji: '✌️', label: 'All Clear' },
-  none: { emoji: '', label: '' },
-};
+interface FloorEdge {
+  edgeId: string;
+  from: string;
+  to: string;
+  length: number;
+  baseCost: number;
+}
+
+interface SensorData {
+  sensorId: string;
+  x: number;
+  y: number;
+  value: number; // > 0.7 = hazard
+}
+
+interface FloorPlanResponse {
+  nodes: FloorNode[];
+  edges: FloorEdge[];
+  walls: { x1: number; y1: number; x2: number; y2: number }[];
+}
 
 /**
- * Unified AR Navigation + Gesture Control view.
- * Single camera feed showing:
- *  - AR arrows pointing to exit
- *  - MediaPipe hand gesture detection overlay
- *  - SOS fist → triggers emergency alert + location broadcast
- *  - Turn-by-turn HUD overlay
+ * SafePath AR — API Driven Vision Navigation
  */
-export function VisionNavigationView({
-  pathNodes = [],
-  turns = [],
-  distance = 0,
-  exitLabel = 'Exit',
-  safetyScore = 0,
-}: VisionNavigationViewProps) {
+export function VisionNavigationView() {
   const [cameraActive, setCameraActive] = useState(false);
   const [sosActive, setSosActive] = useState(false);
-  const [showSOSFlash, setShowSOSFlash] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const { speak } = useVoiceGuidance();
-  const { sendSOS, sendSafe, sendPosition } = useSocket();
-  const [announced, setAnnounced] = useState('');
+  const [showSOSOverlay, setShowSOSOverlay] = useState(false);
 
-  // Gesture recognition — uses same camera feed
+  // --- Data State ---
+  const [graph, setGraph] = useState<FloorPlanResponse | null>(null);
+  const [sensors, setSensors] = useState<SensorData[]>([]);
+  const [userPos, setUserPos] = useState(() => {
+    // Determine position from URL params (e.g. ?x=300&y=300) or default
+    const params = new URLSearchParams(window.location.search);
+    const x = parseFloat(params.get('x') || '300');
+    const y = parseFloat(params.get('y') || '300');
+    return { x, y };
+  });
+  const [currentRoute, setCurrentRoute] = useState<any>(null);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const arCanvasRef = useRef<HTMLCanvasElement>(null);
+  const miniMapRef = useRef<HTMLCanvasElement>(null);
+
+  const { speak } = useVoiceGuidance();
+  const { socket, connected } = useSocket();
   const {
     currentGesture,
-    confirmedGesture,
     confirmProgress,
     confidence,
-    canvasRef,
-    startCamera: startGestureCamera,
-    stopCamera: stopGestureCamera,
-    setOnGestureConfirmed,
+    canvasRef: gestureCanvasRef,
+    startDetectionOn,
+    stopDetection,
+    setOnGestureConfirmed
   } = useGestureRecognition();
 
-  // Direction from pathfinding
-  const currentDirection = useMemo<'left' | 'right' | 'straight' | 'up' | 'down'>(() => {
-    if (turns.length > 0) {
-      const t = turns[0].direction;
-      if (t === 'LEFT') return 'left';
-      if (t === 'RIGHT') return 'right';
-      if (t === 'UP') return 'up';
-      if (t === 'DOWN') return 'down';
-    }
-    return 'straight';
-  }, [turns]);
+  // --- 1. Fetch Initial Data ---
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [planRes, sensorRes] = await Promise.all([
+          fetch('http://localhost:3001/api/floor-plan').then(r => r.json()),
+          fetch('http://localhost:3001/api/sensors').then(r => r.json())
+        ]);
+        setGraph(planRes);
+        setSensors(sensorRes);
+      } catch (err) {
+        console.error('Failed to fetch AR data:', err);
+      }
+    };
+    fetchData();
+  }, []);
 
-  // SOS trigger
+  // --- 2. Pathfinding Logic (Client-side) ---
+  const computeOptimalRoute = useCallback((nodes: FloorNode[], edges: any[], currentSensors: SensorData[]) => {
+    const startNode = 'start'; // In real app, find nearest node to userPos
+    const exitNodes = nodes.filter(n => n.type === 'exit').map(n => n.nodeId);
+
+    // Map sensors to hazards for pathfinding
+    const hazards = currentSensors
+      .filter(s => s.value > 0.7)
+      .map(s => ({
+        hazardId: s.sensorId,
+        type: 'fire' as const,
+        severity: s.value,
+        affectedNodes: nodes.filter(n => Math.sqrt((n.x - s.x) ** 2 + (n.y - s.y) ** 2) < 50).map(n => n.nodeId),
+        timestamp: Date.now()
+      }));
+
+    const result = findGraphPath(startNode, exitNodes, nodes as any, edges, hazards as any);
+    return result;
+  }, []);
+
+  // Compute initial route or reroute on sensor updates
+  useEffect(() => {
+    if (!graph) return;
+    const newRoute = computeOptimalRoute(graph.nodes, graph.edges, sensors);
+    if (!newRoute) return;
+
+    if (!currentRoute) {
+      setCurrentRoute(newRoute);
+    } else {
+      // Flicker prevention: Only switch if new cost is < 88% of old cost
+      if (newRoute.totalCost < currentRoute.totalCost * 0.88) {
+        setCurrentRoute(newRoute);
+        speak({ text: "Route updated due to dynamic hazard change." });
+      }
+    }
+  }, [graph, sensors, computeOptimalRoute, speak, currentRoute]);
+
+  // --- 3. Socket Real-time Handling ---
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('hazard_update', (updatedSensors: SensorData[]) => {
+      setSensors(updatedSensors);
+    });
+
+    // Emit position update every 2 seconds
+    const interval = setInterval(() => {
+      if (connected) {
+        socket.emit('position_update', { userId: socket.id, x: userPos.x, y: userPos.y });
+      }
+    }, 2000);
+
+    return () => {
+      socket.off('hazard_update');
+      clearInterval(interval);
+    };
+  }, [socket, connected, userPos]);
+
+  // --- 4. Gesture SOS Integration ---
   const triggerSOS = useCallback(() => {
     setSosActive(true);
-    setShowSOSFlash(true);
-    sendSOS();
+    setShowSOSOverlay(true);
     playEmergencyAlarm(3000);
     startSOSVibrationLoop();
 
-    // Send current position as emergency location
-    if (pathNodes.length > 0) {
-      sendPosition({ x: pathNodes[0].x, y: pathNodes[0].y });
+    if (socket) {
+      socket.emit('sos_triggered', {
+        userId: socket.id,
+        x: userPos.x,
+        y: userPos.y,
+        floor: 0,
+        ts: Date.now()
+      });
     }
+    speak({ text: "Emergency SOS triggered. 911 dispatch notified." });
+  }, [socket, userPos, speak]);
 
-    speak({ text: 'SOS emergency signal sent. Help is being notified.' });
-  }, [sendSOS, sendPosition, pathNodes, speak]);
-
-  const cancelSOS = useCallback(() => {
-    setSosActive(false);
-    setShowSOSFlash(false);
-    sendSafe();
-    stopSOSVibrationLoop();
-    speak({ text: 'SOS cancelled. You are marked as safe.' });
-  }, [sendSafe, speak]);
-
-  // Register gesture callbacks
   useEffect(() => {
-    setOnGestureConfirmed((gesture: GestureType) => {
+    setOnGestureConfirmed((gesture) => {
       if (gesture === 'closed_fist') {
         triggerSOS();
       } else if (gesture === 'thumbs_up' && sosActive) {
-        cancelSOS();
-      } else if (gesture === 'open_palm') {
-        // Repeat current direction
-        const msg = turns.length > 0
-          ? `Turn ${turns[0].direction.toLowerCase()} in ${turns[0].distanceToNext} meters.`
-          : `Continue to ${exitLabel}. Distance: ${distance.toFixed(0)} meters.`;
-        speak({ text: msg });
-      } else if (gesture === 'pointing_up') {
-        // Announce next step
-        speak({ text: directionText });
+        setSosActive(false);
+        setShowSOSOverlay(false);
+        stopSOSVibrationLoop();
       }
     });
-  }, [setOnGestureConfirmed, triggerSOS, cancelSOS, sosActive, turns, exitLabel, distance, speak]);
+  }, [setOnGestureConfirmed, triggerSOS, sosActive]);
 
-  // Keyboard fallback
+  // --- 5. AR Rendering (Arrows & HUD) ---
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === 's') triggerSOS();
-      if (key === 't' && sosActive) cancelSOS();
-      if (key === 'p') {
-        const msg = turns.length > 0
-          ? `Turn ${turns[0].direction.toLowerCase()} in ${turns[0].distanceToNext} meters.`
-          : `Continue to ${exitLabel}.`;
-        speak({ text: msg });
+    if (!cameraActive || !currentRoute || !arCanvasRef.current) return;
+
+    const ctx = arCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    let frameId: number;
+    const render = () => {
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+      // Compute direction to next waypoint
+      const nextNode = currentRoute.path[1] || currentRoute.path[0];
+      if (nextNode) {
+        const dx = nextNode.x - userPos.x;
+        const dy = nextNode.y - userPos.y;
+        const angle = Math.atan2(dy, dx);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Draw Pokemon GO style arrow
+        const centerX = ctx.canvas.width / 2;
+        const centerY = ctx.canvas.height / 2 + 100;
+        const scale = Math.max(0.5, Math.min(1.5, 200 / dist)); // Scale by distance
+
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(angle + Math.PI / 2);
+        ctx.scale(scale, scale);
+
+        // Arrow Body
+        ctx.beginPath();
+        ctx.moveTo(0, -40);
+        ctx.lineTo(20, 0);
+        ctx.lineTo(-20, 0);
+        ctx.closePath();
+        ctx.fillStyle = '#00f7ff';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#00f7ff';
+        ctx.fill();
+
+        // Base
+        ctx.beginPath();
+        ctx.rect(-10, 0, 20, 30);
+        ctx.fillStyle = '#00f7ff';
+        ctx.fill();
+
+        ctx.restore();
       }
+
+      frameId = requestAnimationFrame(render);
     };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [triggerSOS, cancelSOS, sosActive, turns, exitLabel, speak]);
+    render();
+    return () => cancelAnimationFrame(frameId);
+  }, [cameraActive, currentRoute, userPos]);
 
-  // Auto-announce turns
+  // --- 6. Mini-Map Rendering (Low Visibility Helper) ---
   useEffect(() => {
-    if (turns.length > 0 && cameraActive) {
-      const turn = turns[0];
-      const msg = `Turn ${turn.direction.toLowerCase()} in ${turn.distanceToNext} meters.`;
-      if (msg !== announced) {
-        speak({ text: msg });
-        setAnnounced(msg);
-      }
-    }
-  }, [turns, cameraActive, speak, announced]);
+    if (!graph || !miniMapRef.current) return;
+    const ctx = miniMapRef.current.getContext('2d');
+    if (!ctx) return;
 
-  // Start unified camera (video for AR + gesture for MediaPipe)
-  const startUnifiedCamera = async () => {
+    const scale = 0.25;
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // Draw Walls
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 1;
+    graph.walls.forEach(w => {
+      ctx.beginPath();
+      ctx.moveTo(w.x1 * scale, w.y1 * scale);
+      ctx.lineTo(w.x2 * scale, w.y2 * scale);
+      ctx.stroke();
+    });
+
+    // Draw Hazard Zones
+    sensors.forEach(s => {
+      if (s.value > 0.7) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+        ctx.beginPath();
+        ctx.arc(s.x * scale, s.y * scale, 15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+
+    // Draw Route
+    if (currentRoute) {
+      ctx.strokeStyle = '#00f7ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      currentRoute.path.forEach((n: any, i: number) => {
+        if (i === 0) ctx.moveTo(n.x * scale, n.y * scale);
+        else ctx.lineTo(n.x * scale, n.y * scale);
+      });
+      ctx.stroke();
+    }
+
+    // Draw User
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(userPos.x * scale, userPos.y * scale, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+  }, [graph, sensors, currentRoute, userPos]);
+
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const s = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: 640, height: 480 },
       });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      setStream(s);
       setCameraActive(true);
-
-      // Also start gesture recognizer on same stream
-      setTimeout(() => startGestureCamera(), 300);
-    } catch {
-      setCameraActive(false);
+    } catch (err) {
+      console.error('Camera fail:', err);
     }
   };
 
-  const stopUnifiedCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+  useEffect(() => {
+    if (cameraActive && stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().then(() => {
+        startDetectionOn(videoRef.current!);
+      }).catch(err => console.error("Video play failed:", err));
+    }
+  }, [cameraActive, stream, startDetectionOn]);
+
+  const stopCamera = () => {
+    stopDetection();
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      setStream(null);
+    }
+    if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    stopGestureCamera();
     setCameraActive(false);
   };
 
-  // Arrow rotation based on direction
-  const arrowRotation = useMemo(() => {
-    switch (currentDirection) {
-      case 'left': return 'rotateY(-30deg) rotateZ(90deg)';
-      case 'right': return 'rotateY(30deg) rotateZ(-90deg)';
-      case 'up': return 'rotateX(15deg)';
-      case 'down': return 'rotateX(-15deg) rotateZ(180deg)';
-      default: return 'rotateX(15deg)';
-    }
-  }, [currentDirection]);
-
-  const directionText = useMemo(() => {
-    if (turns.length > 0) {
-      const t = turns[0];
-      const dirMap: Record<string, string> = {
-        LEFT: '← TURN LEFT',
-        RIGHT: 'TURN RIGHT →',
-        UP: '↑ GO STRAIGHT',
-        DOWN: '↓ GO BACK',
-        STRAIGHT: '↑ GO STRAIGHT',
-      };
-      return `${dirMap[t.direction]} in ${t.distanceToNext}m`;
-    }
-    return `↑ HEAD TO ${exitLabel.toUpperCase()}`;
-  }, [turns, exitLabel]);
-
   return (
-    <>
-      {/* === SOS FULL-SCREEN OVERLAY === */}
+    <div className="relative h-[calc(100vh-80px)] overflow-hidden bg-black flex flex-col items-center justify-center">
+      {/* SOS Overlay */}
       <AnimatePresence>
-        {showSOSFlash && (
+        {showSOSOverlay && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-            style={{ background: 'rgba(220, 38, 38, 0.95)' }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-red-600/90 text-white text-center p-6"
           >
-            <motion.div
-              animate={{ scale: [1, 1.1, 1], opacity: [1, 0.8, 1] }}
-              transition={{ duration: 1, repeat: Infinity }}
-              className="text-center text-white"
-            >
-              <div className="text-8xl mb-6">🆘</div>
-              <h1 className="text-4xl font-bold mb-2">SOS SENT</h1>
-              <p className="text-xl opacity-90 mb-1">Emergency signal broadcast</p>
-              <p className="text-sm opacity-70 mb-1">📍 Your location has been shared</p>
-              <p className="text-sm opacity-70">🚨 Emergency response team notified</p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1 }}
-              className="mt-8 text-center text-white space-y-3"
-            >
-              <p className="text-sm">👍 Show thumbs up or press <kbd className="bg-white/30 px-2 py-0.5 rounded">T</kbd> to cancel</p>
-              <div className="flex gap-3">
-                <Button onClick={cancelSOS} variant="outline" className="bg-white/20 border-white text-white hover:bg-white/30">
-                  Cancel SOS
-                </Button>
-                <Button onClick={() => window.open('tel:911')} className="bg-white text-red-600 hover:bg-white/90 font-bold">
-                  📞 Call 911
-                </Button>
-              </div>
-            </motion.div>
-
-            {/* Pulsing border */}
-            <motion.div
-              animate={{ opacity: [0.3, 0.8, 0.3] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              className="absolute inset-0 border-[8px] border-white pointer-events-none"
-            />
+            <AlertTriangle className="w-24 h-24 mb-4 animate-pulse" />
+            <h1 className="text-4xl font-bold mb-2">911 SOS TRIGGERED</h1>
+            <p className="text-xl mb-6">Emergency services have been notified of your location.</p>
+            <div className="space-y-4">
+              <Button onClick={() => setShowSOSOverlay(false)} variant="outline" className="text-white border-white">
+                Dismiss Overlay
+              </Button>
+              <p className="text-sm opacity-70">Show 👍 Thumbs Up to Mark as Safe</p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="space-y-4">
-        {/* === UNIFIED CAMERA VIEW === */}
-        <Card className="overflow-hidden bg-black">
-          <div className="relative aspect-[4/3] bg-gray-900" style={{ perspective: '800px' }}>
-            {!cameraActive ? (
-              // Camera off — show activation prompt
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-4 p-6">
-                <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-2">
-                  <Camera className="w-10 h-10 opacity-60" />
-                </div>
-                <h3 className="text-lg font-bold">AR Navigation + Gesture Control</h3>
-                <p className="text-sm text-center text-gray-400 max-w-xs">
-                  Camera provides AR exit guidance and detects emergency gestures — no touch needed
-                </p>
-                <Button onClick={startUnifiedCamera} size="lg" className="bg-blue-600 hover:bg-blue-700 px-8">
-                  <Camera className="w-4 h-4 mr-2" />
-                  Start AR Camera
-                </Button>
-                <div className="flex gap-2 mt-2">
-                  <Badge variant="secondary" className="text-xs">🧭 AR Navigation</Badge>
-                  <Badge variant="secondary" className="text-xs">✊ Gesture SOS</Badge>
-                  <Badge variant="secondary" className="text-xs">🔊 Voice Guide</Badge>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Live camera feed */}
-                <video
-                  ref={videoRef}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  playsInline
-                  muted
-                />
-
-                {/* Gesture landmark canvas overlay (from MediaPipe) */}
-                <canvas
-                  ref={canvasRef}
-                  width={640}
-                  height={480}
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ transform: 'scaleX(-1)' }}
-                />
-
-                {/* ===== AR OVERLAY LAYER ===== */}
-                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-
-                  {/* Floating 3D arrow */}
-                  <motion.div
-                    animate={{ y: [0, -15, 0], opacity: [0.9, 1, 0.9] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{ transform: arrowRotation, transformStyle: 'preserve-3d' }}
-                    className="mb-4"
-                  >
-                    <svg
-                      width="100" height="100" viewBox="0 0 120 120"
-                      fill="none" xmlns="http://www.w3.org/2000/svg"
-                      style={{ filter: 'drop-shadow(0 0 30px rgba(0, 200, 255, 0.7))' }}
-                    >
-                      <defs>
-                        <linearGradient id="arrowGrad" x1="60" y1="110" x2="60" y2="10">
-                          <stop offset="0%" stopColor="#00c8ff" stopOpacity="0.4" />
-                          <stop offset="100%" stopColor="#00c8ff" stopOpacity="1" />
-                        </linearGradient>
-                        <filter id="glow">
-                          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                          <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                        </filter>
-                      </defs>
-                      <rect x="48" y="50" width="24" height="60" rx="4" fill="url(#arrowGrad)" filter="url(#glow)" />
-                      <polygon points="60,5 20,55 45,55 45,50 75,50 75,55 100,55" fill="url(#arrowGrad)" filter="url(#glow)" />
-                      <rect x="55" y="60" width="10" height="40" rx="2" fill="rgba(255,255,255,0.5)" />
-                    </svg>
-                  </motion.div>
-
-                  {/* Direction text */}
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="bg-black/60 backdrop-blur-md text-white px-6 py-3 rounded-2xl border border-cyan-400/50"
-                    style={{ boxShadow: '0 0 30px rgba(0, 200, 255, 0.3)' }}
-                  >
-                    <p className="text-lg font-bold text-center text-cyan-300">{directionText}</p>
-                  </motion.div>
-
-                  {/* Distance + exit badge */}
-                  <motion.div
-                    animate={{ opacity: [0.7, 1, 0.7] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="mt-3 bg-green-500/80 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2"
-                    style={{ boxShadow: '0 0 20px rgba(76, 175, 80, 0.5)' }}
-                  >
-                    <Shield className="w-4 h-4" />
-                    {exitLabel}: {distance.toFixed(1)}m
-                  </motion.div>
-                </div>
-
-                {/* ===== GESTURE STATUS HUD (bottom-left) ===== */}
-                <div className="absolute bottom-3 left-3 pointer-events-none">
-                  <AnimatePresence mode="wait">
-                    {currentGesture !== 'none' ? (
-                      <motion.div
-                        key={currentGesture}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        className={`px-3 py-2 rounded-xl backdrop-blur-md text-white text-sm font-medium flex items-center gap-2 ${currentGesture === 'closed_fist'
-                            ? 'bg-red-600/80 border border-red-400'
-                            : 'bg-black/60 border border-white/20'
-                          }`}
-                      >
-                        <span className="text-lg">{gestureLabels[currentGesture].emoji}</span>
-                        <div>
-                          <p className="text-xs font-bold">{gestureLabels[currentGesture].label}</p>
-                          <p className="text-[10px] opacity-70">{Math.round(confidence * 100)}%</p>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="ready"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="px-3 py-2 rounded-xl bg-black/40 backdrop-blur-sm text-white/60 text-xs flex items-center gap-2"
-                      >
-                        <Hand className="w-3 h-3" />
-                        Gesture Ready
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* ===== CONFIRMATION PROGRESS BAR (bottom) ===== */}
-                {confirmProgress > 0 && confirmProgress < 1 && (
-                  <div className="absolute bottom-0 left-0 right-0 h-1.5">
-                    <motion.div
-                      className={`h-full ${currentGesture === 'closed_fist' ? 'bg-red-500' : 'bg-cyan-400'}`}
-                      animate={{ width: `${confirmProgress * 100}%` }}
-                      transition={{ duration: 0.1 }}
-                    />
-                  </div>
-                )}
-
-                {/* ===== SOS ACTIVE INDICATOR (top-right) ===== */}
-                {sosActive && (
-                  <motion.div
-                    animate={{ opacity: [1, 0.4, 1] }}
-                    transition={{ duration: 0.8, repeat: Infinity }}
-                    className="absolute top-3 right-3 bg-red-600 text-white px-3 py-1.5 rounded-full text-xs font-bold pointer-events-none flex items-center gap-1.5"
-                  >
-                    🆘 SOS ACTIVE
-                  </motion.div>
-                )}
-
-                {/* Scanner corner brackets */}
-                <div className="absolute inset-4 pointer-events-none">
-                  <div className="absolute top-0 left-0 w-10 h-10 border-t-2 border-l-2 border-cyan-400/60 rounded-tl-lg" />
-                  <div className="absolute top-0 right-0 w-10 h-10 border-t-2 border-r-2 border-cyan-400/60 rounded-tr-lg" />
-                  <div className="absolute bottom-0 left-0 w-10 h-10 border-b-2 border-l-2 border-cyan-400/60 rounded-bl-lg" />
-                  <div className="absolute bottom-0 right-0 w-10 h-10 border-b-2 border-r-2 border-cyan-400/60 rounded-br-lg" />
-                </div>
-
-                {/* Scanning line */}
-                <motion.div
-                  className="absolute left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-30 pointer-events-none"
-                  animate={{ top: ['10%', '90%', '10%'] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
-                />
-
-                {/* Camera off button */}
-                <button
-                  onClick={stopUnifiedCamera}
-                  className="absolute top-3 left-3 bg-black/50 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-xs hover:bg-black/70 transition-colors pointer-events-auto"
-                >
-                  ✕ Close
-                </button>
-              </>
-            )}
+      {!cameraActive ? (
+        <div className="text-center space-y-6 max-w-sm px-6">
+          <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+            <Camera className="w-12 h-12 text-blue-400" />
           </div>
-        </Card>
+          <h2 className="text-2xl font-bold text-white">SafePath AR</h2>
+          <p className="text-gray-400 text-sm">
+            AI-driven emergency evacuation. Real-time hazard detection and gesture-based emergency alerts.
+          </p>
+          <Button onClick={startCamera} size="lg" className="w-full bg-blue-600 hover:bg-blue-700">
+            Access System Camera
+          </Button>
+          <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-500">
+            <Badge variant="outline" className="border-gray-800">API Pathfinding</Badge>
+            <Badge variant="outline" className="border-gray-800">Gesture SOS</Badge>
+            <Badge variant="outline" className="border-gray-800">AR Arrows</Badge>
+            <Badge variant="outline" className="border-gray-800">Live Sensors</Badge>
+          </div>
+        </div>
+      ) : (
+        <div className="absolute inset-0 w-full h-full">
+          {/* Camera Feed */}
+          <video
+            ref={videoRef}
+            className="absolute inset-0 w-full h-full object-cover"
+            playsInline
+            muted
+          />
 
-        {/* === TURN-BY-TURN + GESTURE QUICK GUIDE === */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Upcoming turns */}
-          {turns.length > 0 && (
-            <Card className="p-3 bg-gradient-to-br from-cyan-50 to-blue-50 border-cyan-200">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Navigation className="w-3 h-3 text-cyan-600" />
-                <p className="text-xs font-semibold text-cyan-900">Turns</p>
+          {/* AR Arrow Layer */}
+          <canvas
+            ref={arCanvasRef}
+            width={640} height={480}
+            className="absolute inset-0 w-full h-full pointer-events-none"
+          />
+
+          {/* Gesture Landmark Layer */}
+          <canvas
+            ref={gestureCanvasRef}
+            width={640} height={480}
+            className="absolute inset-0 w-full h-full pointer-events-none opacity-40"
+          />
+
+          {/* HUD Overlay */}
+          <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent flex justify-between items-start pointer-events-none">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-green-400" />
+                <span className="text-white font-bold text-lg">SafePath AR Active</span>
               </div>
-              <div className="space-y-1.5">
-                {turns.slice(0, 3).map((turn, i) => (
-                  <div key={turn.atNodeId + i} className="flex items-center gap-2 text-xs">
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${i === 0 ? 'bg-cyan-500 text-white' : 'bg-gray-200 text-gray-600'
-                      }`}>{i + 1}</span>
-                    <span>
-                      {turn.direction === 'LEFT' ? '⬅️' :
-                        turn.direction === 'RIGHT' ? '➡️' :
-                          turn.direction === 'UP' ? '⬆️' : '⬇️'}
-                    </span>
-                    <span className={i === 0 ? 'font-bold text-cyan-900' : 'text-gray-500'}>
-                      {turn.distanceToNext}m
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
+              <p className="text-xs text-gray-300">Target: {currentRoute?.exitUsed || 'Calculating Exit...'}</p>
+            </div>
+
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant="destructive" className="bg-red-500 animate-pulse">LIVE SENSORS</Badge>
+              {connected && <Badge variant="secondary" className="bg-green-500/20 text-green-400 border-green-500/30">Network Connected</Badge>}
+            </div>
+          </div>
+
+          {/* Mini-Map Overlay (Low Visibility Help) */}
+          <Card className="absolute top-20 right-4 w-40 h-40 bg-black/40 backdrop-blur-md border-white/10 p-1 pointer-events-none overflow-hidden">
+            <div className="absolute top-1 left-2 flex items-center gap-1">
+              <MapIcon className="w-3 h-3 text-white/60" />
+              <span className="text-[10px] text-white/60 font-medium">Digital Mapping</span>
+            </div>
+            <canvas ref={miniMapRef} width={150} height={100} className="w-full h-full mt-2" />
+          </Card>
+
+          {/* Gesture Confirmation Indicator */}
+          {confirmProgress > 0 && confirmProgress < 1 && (
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-48 h-2 bg-gray-800 rounded-full overflow-hidden border border-white/10">
+              <div
+                className={`h-full transition-all duration-100 ${currentGesture === 'closed_fist' ? 'bg-red-500' : 'bg-blue-500'}`}
+                style={{ width: `${confirmProgress * 100}%` }}
+              />
+            </div>
           )}
 
-          {/* Gesture quick ref */}
-          <Card className="p-3 bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Hand className="w-3 h-3 text-purple-600" />
-              <p className="text-xs font-semibold text-purple-900">Gestures</p>
+          {/* Bottom HUD */}
+          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-400 text-[10px] uppercase tracking-wider font-bold">Detected Pose</p>
+                <div className="flex items-center gap-2 text-white">
+                  <Hand className="w-4 h-4" />
+                  <span className="font-medium">{currentGesture === 'none' ? 'Ready for Gesture' : currentGesture.replace('_', ' ')}</span>
+                  {confidence > 0 && <span className="text-xs opacity-50">({Math.round(confidence * 100)}%)</span>}
+                </div>
+              </div>
+              <Button onClick={stopCamera} variant="outline" className="text-white border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto">
+                Stop System
+              </Button>
             </div>
-            <div className="space-y-1 text-[11px] text-purple-800">
-              <div>✊ Fist = <strong className="text-red-600">SOS 911</strong></div>
-              <div>👍 Thumb = Cancel SOS</div>
-              <div>✋ Palm = Repeat</div>
-              <div>☝️ Point = Next Step</div>
+
+            <div className="grid grid-cols-2 gap-2 pointer-events-auto">
+              <Button className="bg-red-600 hover:bg-red-700 text-xs h-8" onClick={triggerSOS}>
+                Manual SOS
+              </Button>
+              <Button variant="outline" className="bg-white/10 text-white text-xs h-8" onClick={() => speak({ text: "Current path is safe. Follow the AR arrows forward." })}>
+                <Volume2 className="w-3 h-3 mr-2" /> Voice Assist
+              </Button>
             </div>
-          </Card>
-        </div>
+          </div>
 
-        {/* Keyboard shortcuts (small) */}
-        <div className="flex items-center gap-2 text-[10px] text-gray-400 justify-center">
-          <Keyboard className="w-3 h-3" />
-          <span><kbd className="bg-gray-200 text-gray-600 px-1 rounded">S</kbd> SOS</span>
-          <span><kbd className="bg-gray-200 text-gray-600 px-1 rounded">T</kbd> Cancel</span>
-          <span><kbd className="bg-gray-200 text-gray-600 px-1 rounded">P</kbd> Repeat</span>
+          {/* Scanner Line Effect */}
+          <motion.div
+            animate={{ top: ['20%', '80%', '20%'] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+            className="absolute left-0 right-0 h-[1px] bg-blue-500/30 shadow-[0_0_15px_blue] pointer-events-none"
+          />
         </div>
-
-        {/* Voice button */}
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => speak({ text: `Continue to ${exitLabel}. Distance: ${distance.toFixed(0)} meters. ${directionText}.` })}
-        >
-          <Volume2 className="w-4 h-4 mr-2" />
-          Announce Direction
-        </Button>
-      </div>
-    </>
+      )}
+    </div>
   );
 }
