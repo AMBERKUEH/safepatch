@@ -11,6 +11,7 @@ type Page = 'home' | 'navigation' | 'emergency' | 'dashboard';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   const navigation = [
     { id: 'home', icon: Home, label: 'Home' },
@@ -22,7 +23,7 @@ function App() {
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto pb-20">
+      <main className="flex-1 overflow-y-auto pb-28">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentPage}
@@ -32,7 +33,12 @@ function App() {
             transition={{ duration: 0.2 }}
             className="h-full"
           >
-            {currentPage === 'home' && <HomePage />}
+            {currentPage === 'home' && (
+              <HomePage
+                onNavigate={(page) => setCurrentPage(page)}
+                onOpenAssistant={() => setIsAssistantOpen(true)}
+              />
+            )}
             {currentPage === 'navigation' && <NavigationPage />}
             {currentPage === 'emergency' && <EmergencyPage />}
             {currentPage === 'dashboard' && <DashboardPage />}
@@ -41,7 +47,11 @@ function App() {
       </main>
 
       {/* Floating AI Assistant */}
-      <FloatingAIAssistant />
+      <FloatingAIAssistant
+        isOpen={isAssistantOpen}
+        onOpen={() => setIsAssistantOpen(true)}
+        onClose={() => setIsAssistantOpen(false)}
+      />
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40">

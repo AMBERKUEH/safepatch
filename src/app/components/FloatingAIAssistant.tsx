@@ -6,6 +6,12 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
 
+interface FloatingAIAssistantProps {
+  isOpen: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}
+
 interface Message {
   id: string;
   text: string;
@@ -22,8 +28,7 @@ const AI_RESPONSES: Record<string, string> = {
   default: "Stay calm and follow my guidance. I'm monitoring the situation and will keep you safe.",
 };
 
-export function FloatingAIAssistant() {
-  const [isOpen, setIsOpen] = useState(false);
+export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -98,7 +103,7 @@ export function FloatingAIAssistant() {
             exit={{ scale: 0, opacity: 0 }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => setIsOpen(true)}
+            onClick={onOpen}
             className="fixed bottom-24 right-6 w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full shadow-2xl flex items-center justify-center z-50"
           >
             <Bot className="w-7 h-7 text-white" />
@@ -157,7 +162,7 @@ export function FloatingAIAssistant() {
                       )}
                     </Button>
                     <Button
-                      onClick={() => setIsOpen(false)}
+                      onClick={onClose}
                       variant="ghost"
                       size="sm"
                       className="text-white hover:bg-white/20 h-8 w-8 p-0"
