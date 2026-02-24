@@ -26,6 +26,7 @@ const RECOMPUTE_INTERVAL = 4000; // ms
 export function NavigationPage() {
   const [navMode, setNavMode] = useState<NavigationMode>('VISION');
   const [userNodeId, setUserNodeId] = useState('start');
+  const [userHeading, setUserHeading] = useState(0); // 0-360 degrees
   const [hazards, setHazards] = useState<HazardZone[]>(DEFAULT_HAZARDS);
   const [routeResult, setRouteResult] = useState<GraphPathResult | null>(null);
   const { sendPosition, sendHazard, hazards: socketHazards } = useSocket();
@@ -225,7 +226,19 @@ export function NavigationPage() {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
             >
-              <VisionNavigationView />
+              <VisionNavigationView
+                userPos={DEFAULT_NODES.find(n => n.nodeId === userNodeId) || DEFAULT_NODES[0]}
+                currentRoute={routeResult}
+                graph={{ nodes: DEFAULT_NODES, edges: DEFAULT_EDGES, walls: WALL_SEGMENTS }}
+                sensors={hazards.map(h => ({
+                  sensorId: h.hazardId,
+                  x: DEFAULT_NODES.find(n => h.affectedNodes.includes(n.nodeId))?.x || 0,
+                  y: DEFAULT_NODES.find(n => h.affectedNodes.includes(n.nodeId))?.y || 0,
+                  value: h.severity
+                }))}
+                heading={userHeading}
+                onHeadingChange={setUserHeading}
+              />
             </motion.div>
           ) : (
             <motion.div

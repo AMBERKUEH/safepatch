@@ -42,25 +42,29 @@ interface FloorPlanResponse {
   walls: { x1: number; y1: number; x2: number; y2: number }[];
 }
 
+interface VisionNavigationViewProps {
+  userPos: { x: number; y: number };
+  currentRoute: any;
+  graph: FloorPlanResponse;
+  sensors: SensorData[];
+  heading: number;
+  onHeadingChange: (heading: number) => void;
+}
+
 /**
  * SafePath AR — API Driven Vision Navigation
  */
-export function VisionNavigationView() {
+export function VisionNavigationView({
+  userPos,
+  currentRoute,
+  graph,
+  sensors,
+  heading,
+  onHeadingChange
+}: VisionNavigationViewProps) {
   const [cameraActive, setCameraActive] = useState(false);
   const [sosActive, setSosActive] = useState(false);
   const [showSOSOverlay, setShowSOSOverlay] = useState(false);
-
-  // --- Data State ---
-  const [graph, setGraph] = useState<FloorPlanResponse | null>(null);
-  const [sensors, setSensors] = useState<SensorData[]>([]);
-  const [userPos, setUserPos] = useState(() => {
-    // Determine position from URL params (e.g. ?x=300&y=300) or default
-    const params = new URLSearchParams(window.location.search);
-    const x = parseFloat(params.get('x') || '300');
-    const y = parseFloat(params.get('y') || '300');
-    return { x, y };
-  });
-  const [currentRoute, setCurrentRoute] = useState<any>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const arCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -77,81 +81,6 @@ export function VisionNavigationView() {
     stopDetection,
     setOnGestureConfirmed
   } = useGestureRecognition();
-
-  // --- 1. Fetch Initial Data ---
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [planRes, sensorRes] = await Promise.all([
-          fetch('http://localhost:3001/api/floor-plan').then(r => r.json()),
-          fetch('http://localhost:3001/api/sensors').then(r => r.json())
-        ]);
-        setGraph(planRes);
-        setSensors(sensorRes);
-      } catch (err) {
-        console.error('Failed to fetch AR data:', err);
-      }
-    };
-    fetchData();
-  }, []);
-
-  // --- 2. Pathfinding Logic (Client-side) ---
-  const computeOptimalRoute = useCallback((nodes: FloorNode[], edges: any[], currentSensors: SensorData[]) => {
-    const startNode = 'start'; // In real app, find nearest node to userPos
-    const exitNodes = nodes.filter(n => n.type === 'exit').map(n => n.nodeId);
-
-    // Map sensors to hazards for pathfinding
-    const hazards = currentSensors
-      .filter(s => s.value > 0.7)
-      .map(s => ({
-        hazardId: s.sensorId,
-        type: 'fire' as const,
-        severity: s.value,
-        affectedNodes: nodes.filter(n => Math.sqrt((n.x - s.x) ** 2 + (n.y - s.y) ** 2) < 50).map(n => n.nodeId),
-        timestamp: Date.now()
-      }));
-
-    const result = findGraphPath(startNode, exitNodes, nodes as any, edges, hazards as any);
-    return result;
-  }, []);
-
-  // Compute initial route or reroute on sensor updates
-  useEffect(() => {
-    if (!graph) return;
-    const newRoute = computeOptimalRoute(graph.nodes, graph.edges, sensors);
-    if (!newRoute) return;
-
-    if (!currentRoute) {
-      setCurrentRoute(newRoute);
-    } else {
-      // Flicker prevention: Only switch if new cost is < 88% of old cost
-      if (newRoute.totalCost < currentRoute.totalCost * 0.88) {
-        setCurrentRoute(newRoute);
-        speak({ text: "Route updated due to dynamic hazard change." });
-      }
-    }
-  }, [graph, sensors, computeOptimalRoute, speak, currentRoute]);
-
-  // --- 3. Socket Real-time Handling ---
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('hazard_update', (updatedSensors: SensorData[]) => {
-      setSensors(updatedSensors);
-    });
-
-    // Emit position update every 2 seconds
-    const interval = setInterval(() => {
-      if (connected) {
-        socket.emit('position_update', { userId: socket.id, x: userPos.x, y: userPos.y });
-      }
-    }, 2000);
-
-    return () => {
-      socket.off('hazard_update');
-      clearInterval(interval);
-    };
-  }, [socket, connected, userPos]);
 
   // --- 4. Gesture SOS Integration ---
   const triggerSOS = useCallback(() => {
@@ -195,49 +124,67 @@ export function VisionNavigationView() {
     const render = () => {
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-      // Compute direction to next waypoint
-      const nextNode = currentRoute.path[1] || currentRoute.path[0];
+      // Compute direction from ACTUAL userPos to the next waypoint in path
+      const nextNode = currentRoute.path.length > 1 ? currentRoute.path[1] : currentRoute.path[0];
+
       if (nextNode) {
         const dx = nextNode.x - userPos.x;
         const dy = nextNode.y - userPos.y;
-        const angle = Math.atan2(dy, dx);
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        // Draw Pokemon GO style arrow
-        const centerX = ctx.canvas.width / 2;
-        const centerY = ctx.canvas.height / 2 + 100;
-        const scale = Math.max(0.5, Math.min(1.5, 200 / dist)); // Scale by distance
+        // Only draw if we aren't "on" the node
+        if (dist > 10) {
+          // Calculate angle relative to the world
+          const worldAngle = Math.atan2(dy, dx);
 
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate(angle + Math.PI / 2);
-        ctx.scale(scale, scale);
+          // Adjust for user's heading (simulated camera orientation)
+          // heading is in degrees, convert to radians
+          const headingRad = (heading * Math.PI) / 180;
+          const relativeAngle = worldAngle - headingRad;
 
-        // Arrow Body
-        ctx.beginPath();
-        ctx.moveTo(0, -40);
-        ctx.lineTo(20, 0);
-        ctx.lineTo(-20, 0);
-        ctx.closePath();
-        ctx.fillStyle = '#00f7ff';
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#00f7ff';
-        ctx.fill();
+          const centerX = ctx.canvas.width / 2;
+          const centerY = ctx.canvas.height / 2 + 100;
+          const scale = Math.max(0.6, Math.min(1.4, 150 / dist));
 
-        // Base
-        ctx.beginPath();
-        ctx.rect(-10, 0, 20, 30);
-        ctx.fillStyle = '#00f7ff';
-        ctx.fill();
+          ctx.save();
+          ctx.translate(centerX, centerY);
+          ctx.rotate(relativeAngle + Math.PI / 2); // Rotate the arrow element
+          ctx.scale(scale, scale);
 
-        ctx.restore();
+          // Arrow shadow/glow
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = 'rgba(0, 247, 255, 0.8)';
+
+          // Draw Arrow Head (Triangle)
+          ctx.beginPath();
+          ctx.moveTo(0, -50);
+          ctx.lineTo(25, 0);
+          ctx.lineTo(-25, 0);
+          ctx.closePath();
+          ctx.fillStyle = '#00f7ff';
+          ctx.fill();
+
+          // Draw Arrow Shaft
+          ctx.beginPath();
+          ctx.rect(-12, 0, 24, 35);
+          ctx.fillStyle = '#00f7ff';
+          ctx.fill();
+
+          ctx.restore();
+        } else if (currentRoute.path.length === 1 && nextNode.type === 'exit') {
+          // Arrived at exit!
+          ctx.fillStyle = '#4ade80';
+          ctx.font = 'bold 30px Inter, system-ui';
+          ctx.textAlign = 'center';
+          ctx.fillText('EXIT ARRIVED', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        }
       }
 
       frameId = requestAnimationFrame(render);
     };
     render();
     return () => cancelAnimationFrame(frameId);
-  }, [cameraActive, currentRoute, userPos]);
+  }, [cameraActive, currentRoute, userPos, heading]);
 
   // --- 6. Mini-Map Rendering (Low Visibility Helper) ---
   useEffect(() => {
@@ -280,13 +227,28 @@ export function VisionNavigationView() {
       ctx.stroke();
     }
 
-    // Draw User
+    // Draw User (with heading indicator)
+    ctx.save();
+    ctx.translate(userPos.x * scale, userPos.y * scale);
+    ctx.rotate((heading * Math.PI) / 180);
+
+    // User dot
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(userPos.x * scale, userPos.y * scale, 4, 0, Math.PI * 2);
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
     ctx.fill();
 
-  }, [graph, sensors, currentRoute, userPos]);
+    // Heading line
+    ctx.strokeStyle = '#00f7ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -10);
+    ctx.stroke();
+
+    ctx.restore();
+
+  }, [graph, sensors, currentRoute, userPos, heading]);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
 
@@ -402,6 +364,24 @@ export function VisionNavigationView() {
               <Badge variant="destructive" className="bg-red-500 animate-pulse">LIVE SENSORS</Badge>
               {connected && <Badge variant="secondary" className="bg-green-500/20 text-green-400 border-green-500/30">Network Connected</Badge>}
             </div>
+          </div>
+
+          {/* Virtual Heading Control HUD */}
+          <div className="absolute top-24 left-4 w-48 p-4 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 pointer-events-auto">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] text-white/60 font-medium tracking-wider uppercase">Virtual Turning</span>
+              <span className="text-[10px] text-blue-400 font-bold">{heading}°</span>
+            </div>
+            <input
+              type="range"
+              min="0" max="360"
+              value={heading}
+              onChange={(e) => onHeadingChange(parseInt(e.target.value))}
+              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <p className="text-[8px] text-gray-400 mt-2 leading-tight">
+              Drag to turn the camera virtually. Arrow reflects view rotation.
+            </p>
           </div>
 
           {/* Mini-Map Overlay (Low Visibility Help) */}
