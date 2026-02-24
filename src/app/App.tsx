@@ -1,21 +1,37 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Navigation, AlertCircle, LayoutDashboard } from 'lucide-react';
+import { Home, Navigation, AlertCircle, LayoutDashboard, Share2 } from 'lucide-react';
 import { HomePage } from './components/pages/HomePage';
 import { NavigationPage } from './components/pages/NavigationPage';
 import { EmergencyPage } from './components/pages/EmergencyPage';
 import { DashboardPage } from './components/pages/DashboardPage';
+import { MeshNetworkPage } from './components/pages/MeshNetworkPage';
 import { FloatingAIAssistant } from './components/FloatingAIAssistant';
+import { useSocket } from './hooks/useSocket';
+import { useMeshEngine } from '../mesh/hooks/useMeshEngine';
 
-type Page = 'home' | 'navigation' | 'emergency' | 'dashboard';
+type Page = 'home' | 'navigation' | 'emergency' | 'dashboard' | 'mesh';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const { socket, connected } = useSocket();
+
+  // Mesh engine — auto-activates as a standalone feature
+  const {
+    peerCount,
+    lastSOS,
+    lastAckedMsgId,
+    isActive: meshActive,
+    sendSOS: meshSendSOS,
+    relayHazard,
+    relayLocation,
+  } = useMeshEngine(socket);
 
   const navigation = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'navigation', icon: Navigation, label: 'Navigate' },
+    { id: 'mesh', icon: Share2, label: 'Mesh' },
     { id: 'emergency', icon: AlertCircle, label: 'Emergency' },
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   ];
@@ -35,11 +51,21 @@ function App() {
           >
             {currentPage === 'home' && (
               <HomePage
-                onNavigate={(page) => setCurrentPage(page)}
+                onNavigate={(page) => setCurrentPage(page as Page)}
                 onOpenAssistant={() => setIsAssistantOpen(true)}
               />
             )}
             {currentPage === 'navigation' && <NavigationPage />}
+            {currentPage === 'mesh' && (
+              <MeshNetworkPage
+                peerCount={peerCount}
+                lastSOS={lastSOS}
+                lastAckedMsgId={lastAckedMsgId}
+                isActive={meshActive}
+                onSendSOS={() => meshSendSOS(0, 0)} // Placeholder coords, user can trigger real SOS on navigation page
+                onRelayHazard={() => relayHazard(JSON.stringify({ type: 'test', value: 1 }))}
+              />
+            )}
             {currentPage === 'emergency' && <EmergencyPage />}
             {currentPage === 'dashboard' && <DashboardPage />}
           </motion.div>

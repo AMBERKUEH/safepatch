@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { aiRouter } from './routes/ai.js';
+import { registerMeshSignaling } from './meshSignaling.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -55,6 +56,12 @@ app.get('/api/sensors', (req, res) => {
     { sensorId: 's2', x: 400, y: 300, value: 0.2 },
   ]);
 });
+
+// Register Offline Mesh Engine signaling
+registerMeshSignaling(io);
+
+const occupants = new Map();
+const hazards = [];
 
 io.on('connection', (socket) => {
   const userId = `user-${socket.id.slice(0, 8)}`;

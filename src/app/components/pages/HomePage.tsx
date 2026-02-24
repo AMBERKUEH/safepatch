@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Shield, ArrowRight } from 'lucide-react';
 import { Card } from '../ui/card';
 
-type Page = 'home' | 'navigation' | 'emergency' | 'dashboard';
+type Page = 'home' | 'navigation' | 'emergency' | 'dashboard' | 'mesh';
 
 interface HomePageProps {
   onNavigate: (page: Page) => void;
@@ -29,6 +29,13 @@ export function HomePage({ onNavigate, onOpenAssistant }: HomePageProps) {
       icon: '🗺️',
       gradient: 'from-blue-500 to-cyan-500',
       target: 'navigation',
+    },
+    {
+      title: 'Mesh Network',
+      description: 'P2P emergency relay with nearby devices',
+      icon: '📡',
+      gradient: 'from-indigo-500 to-purple-500',
+      target: 'mesh',
     },
     {
       title: 'AI Assistant',
