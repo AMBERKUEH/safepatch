@@ -6,6 +6,9 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { aiRouter } from './routes/ai.js';
+import { firstAidRouter } from './routes/firstAid.js';
+import { safeWalkRouter, registerSafeWalkSocket } from './routes/safeWalk.js';
+import { silentSOSRouter, registerSOSSocket } from './routes/silentSOS.js';
 import { registerMeshSignaling } from './meshSignaling.js';
 
 const app = express();
@@ -61,8 +64,15 @@ app.get('/api/sensors', (req, res) => {
   ]);
 });
 
-// Register Offline Mesh Engine signaling
+// Mount API routes
+app.use('/api/first-aid', firstAidRouter);
+app.use('/api/safewalk', safeWalkRouter);
+app.use('/api/sos', silentSOSRouter);
+
+// Register Socket.io handlers
 registerMeshSignaling(io);
+registerSafeWalkSocket(io);
+registerSOSSocket(io);
 
 const occupants = new Map();
 const hazards = [];

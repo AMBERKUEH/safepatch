@@ -1,284 +1,257 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Phone, AlertTriangle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, Phone, CheckCircle, ChevronRight } from 'lucide-react';
 import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Progress } from '../ui/progress';
 import { useSocket } from '../../hooks/useSocket';
 
-const cprSteps = [
-  { title: 'Check Responsiveness', desc: 'Tap shoulders and shout', duration: 5 },
-  { title: 'Call Emergency', desc: 'Dial 911 immediately', duration: 3 },
-  { title: 'Position Hands', desc: 'Center of chest, hands locked', duration: 5 },
-  { title: 'Begin Compressions', desc: 'Push hard and fast, 100-120/min', duration: 30 },
+import AIFirstAidModal from '../emergency/AIFirstAidModal';
+import { SafeWalkPanel } from '../emergency/SafeWalkPanel';
+import { SilentSOSOverlay } from '../emergency/SilentSOSOverlay';
+import { FakeCallScreen } from '../emergency/FakeCallScreen';
+
+type ActiveView = 'main' | 'firstaid' | 'safewalk' | 'silentsos' | 'fakecall';
+
+// Urgency tiers determine visual weight + layout
+const TIER_1 = [
+  {
+    id: 'sos',
+    title: 'Send SOS',
+    subtitle: 'Alert all responders instantly',
+    icon: '🚨',
+    urgency: 'critical', // red pulsing CTA
+    action: 'sos',
+  },
+];
+
+const TIER_2 = [
+  {
+    id: 'firstaid',
+    title: 'AI First Aid',
+    subtitle: 'Step-by-step guidance',
+    icon: '🧠',
+    urgency: 'high',
+    action: 'firstaid' as ActiveView,
+  },
+  {
+    id: 'silentsos',
+    title: 'Silent SOS',
+    subtitle: 'Discreet alert',
+    icon: '🤫',
+    urgency: 'high',
+    action: 'silentsos' as ActiveView,
+  },
+];
+
+const TIER_3 = [
+  {
+    id: 'safewalk',
+    title: 'Safe Walk',
+    subtitle: 'Live tracking',
+    icon: '🛡️',
+    urgency: 'medium',
+    action: 'safewalk' as ActiveView,
+  },
+  {
+    id: 'fakecall',
+    title: 'Fake Call',
+    subtitle: 'Escape a situation',
+    icon: '📱',
+    urgency: 'medium',
+    action: 'fakecall' as ActiveView,
+  },
 ];
 
 export function EmergencyPage() {
-  const [showCPR, setShowCPR] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [compressionCount, setCompressionCount] = useState(0);
+  const [activeView, setActiveView] = useState<ActiveView>('main');
+  const [sosTriggered, setSosTriggered] = useState(false);
   const { sendSOS } = useSocket();
 
-  const emergencyOptions = [
-    {
-      title: 'CPR Guide',
-      description: 'Step-by-step CPR instructions',
-      icon: '❤️',
-      color: 'from-red-500 to-pink-500',
-      action: () => setShowCPR(true),
-    },
-    {
-      title: 'Call 911',
-      description: 'Emergency services',
-      icon: '📞',
-      color: 'from-blue-500 to-cyan-500',
-      action: () => window.open('tel:911'),
-    },
-    {
-      title: 'Send SOS',
-      description: 'Alert all responders',
-      icon: '🚨',
-      color: 'from-orange-500 to-red-500',
-      action: () => {
-        sendSOS();
-        alert('SOS sent to all emergency responders!');
-      },
-    },
-    {
-      title: 'First Aid',
-      description: 'Basic medical guidance',
-      icon: '🩹',
-      color: 'from-green-500 to-emerald-500',
-      action: () => alert('First aid guide coming soon!'),
-    },
-  ];
+  const handleSOS = () => {
+    sendSOS();
+    setSosTriggered(true);
+    setTimeout(() => setSosTriggered(false), 4000);
+  };
 
-  if (showCPR) {
-    return (
-      <div className="min-h-full bg-gradient-to-br from-red-50 to-pink-50">
-        {/* CPR Header */}
-        <div className="bg-gradient-to-r from-red-600 to-pink-600 px-6 py-6 text-white">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowCPR(false)}
-                className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold">CPR Guide</h1>
-                <p className="text-red-100 text-sm">Follow carefully</p>
-              </div>
-            </div>
-            <Button
-              onClick={() => window.open('tel:911')}
-              size="sm"
-              className="bg-white text-red-600 hover:bg-red-50"
-            >
-              <Phone className="w-4 h-4 mr-1" />
-              911
-            </Button>
-          </div>
+  const navigate = (action: string | ActiveView) => {
+    if (action === 'sos') {
+      handleSOS();
+    } else {
+      setActiveView(action as ActiveView);
+    }
+  };
 
-          <Card className="p-3 bg-white/10 backdrop-blur-md border-white/20">
-            <div className="flex items-center justify-between text-sm">
-              <span>Step {currentStep + 1} of {cprSteps.length}</span>
-              <span>{cprSteps[currentStep].title}</span>
-            </div>
-            <Progress value={((currentStep + 1) / cprSteps.length) * 100} className="mt-2 h-1.5" />
-          </Card>
-        </div>
+  // ── Sub-views ──────────────────────────────────
+  if (activeView === 'firstaid') return <AIFirstAidModal onClose={() => setActiveView('main')} />;
+  if (activeView === 'safewalk') return <SafeWalkPanel onClose={() => setActiveView('main')} />;
+  if (activeView === 'silentsos') return <SilentSOSOverlay onClose={() => setActiveView('main')} />;
+  if (activeView === 'fakecall') return (
+    <FakeCallScreen
+      onClose={() => setActiveView('main')}
+      onSecretSOS={() => sendSOS()}
+    />
+  );
 
-        <div className="p-6 space-y-6">
-          {/* Current Step */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-            >
-              <Card className="p-6 bg-white border-2 border-red-200">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-red-600 to-pink-600 rounded-full flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
-                    {currentStep + 1}
-                  </div>
-                  <div className="flex-1">
-                    <h2 className="text-xl font-bold text-gray-900 mb-2">
-                      {cprSteps[currentStep].title}
-                    </h2>
-                    <p className="text-gray-700">{cprSteps[currentStep].desc}</p>
-                  </div>
-                </div>
-
-                {/* Compression Counter */}
-                {currentStep === 3 && (
-                  <div className="mt-6 space-y-4">
-                    <div className="bg-red-50 rounded-2xl p-6 text-center">
-                      <p className="text-5xl font-bold text-red-600 mb-2">{compressionCount}</p>
-                      <p className="text-sm text-red-900">Compressions</p>
-                    </div>
-                    <Button
-                      onClick={() => setCompressionCount((c) => c + 1)}
-                      className="w-full h-20 text-lg bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700"
-                    >
-                      <Heart className="w-6 h-6 mr-2" />
-                      Press Each Compression
-                    </Button>
-                  </div>
-                )}
-              </Card>
-            </motion.div>
-          </AnimatePresence>
-
-          {/* Navigation */}
-          <div className="flex gap-3">
-            {currentStep > 0 && (
-              <Button
-                onClick={() => setCurrentStep((s) => s - 1)}
-                variant="outline"
-                className="flex-1"
-              >
-                Previous
-              </Button>
-            )}
-            {currentStep < cprSteps.length - 1 && (
-              <Button
-                onClick={() => setCurrentStep((s) => s + 1)}
-                className="flex-1 bg-gradient-to-r from-red-600 to-pink-600"
-              >
-                Next Step
-              </Button>
-            )}
-          </div>
-
-          {/* Important Tips */}
-          <Card className="p-5 bg-yellow-50 border-yellow-200">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-yellow-900 mb-2">Important</h3>
-                <ul className="text-sm text-yellow-800 space-y-1">
-                  <li>• Push 2 inches deep on chest</li>
-                  <li>• 100-120 compressions per minute</li>
-                  <li>• Allow full chest recoil</li>
-                  <li>• Continue until help arrives</li>
-                </ul>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
+  // ── Main View ──────────────────────────────────
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-8 text-white">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-            <AlertTriangle className="w-6 h-6" />
+    <div className="min-h-full bg-gray-50 text-gray-900 overflow-x-hidden">
+
+      {/* ── Status Bar ── */}
+      <div className="flex items-center justify-between px-5 pt-5 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse block" />
+          <span className="text-xs font-medium text-gray-400 tracking-widest uppercase">System Active</span>
+        </div>
+        <div className="text-xs text-gray-500 font-mono">Response Ready</div>
+      </div>
+
+      {/* ── Hero Header ── */}
+      <div className="px-5 pb-6">
+        <div className="flex items-start gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0 mt-1">
+            <AlertTriangle className="w-7 h-7 text-red-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Emergency</h1>
-            <p className="text-red-100 text-sm">Quick access to help</p>
+            <h1 className="text-3xl font-black tracking-tight leading-none">Emergency</h1>
+            <p className="text-gray-400 text-sm mt-1">Tap the right action immediately</p>
           </div>
         </div>
-
-        {/* Emergency Status */}
-        <Card className="p-4 bg-white/10 backdrop-blur-md border-white/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-sm">System Active</span>
-            </div>
-            <span className="text-sm">Response Ready</span>
-          </div>
-        </Card>
       </div>
 
-      <div className="p-6 space-y-6">
-        {/* Emergency Alert */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-red-500 text-white p-5 rounded-2xl shadow-lg"
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <AlertTriangle className="w-6 h-6" />
-            <div>
-              <p className="font-bold">Emergency Mode Active</p>
-              <p className="text-sm text-red-100">All features ready for immediate use</p>
-            </div>
-          </div>
-        </motion.div>
+      <div className="px-5 pb-10 space-y-4">
 
-        {/* Emergency Options */}
-        <div>
-          <h2 className="font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid gap-4">
-            {emergencyOptions.map((option, index) => (
-              <motion.div
-                key={option.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Card
-                  onClick={option.action}
-                  className="p-5 hover:shadow-lg transition-all cursor-pointer active:scale-95"
-                >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${option.color} flex items-center justify-center text-4xl shadow-lg`}
-                    >
-                      {option.icon}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-gray-900 mb-1">{option.title}</h3>
-                      <p className="text-sm text-gray-600">{option.description}</p>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {/* Emergency Contacts */}
-        <Card className="p-5 bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
-          <h3 className="font-semibold text-blue-900 mb-3">Emergency Contacts</h3>
-          <div className="space-y-2">
-            <button
-              onClick={() => window.open('tel:911')}
-              className="w-full p-3 bg-white rounded-xl flex items-center justify-between hover:bg-blue-50 transition-colors"
+        {/* ── TIER 1: Critical — SOS (full-width dominant button) ── */}
+        <AnimatePresence mode="wait">
+          {sosTriggered ? (
+            <motion.div
+              key="sos-sent"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full rounded-3xl bg-green-500 p-5 flex items-center gap-4 shadow-[0_0_40px_rgba(34,197,94,0.4)]"
             >
-              <div className="flex items-center gap-3">
-                <Phone className="w-5 h-5 text-blue-600" />
+              <CheckCircle className="w-8 h-8 text-white flex-shrink-0" />
+              <div>
+                <p className="font-black text-lg">SOS Sent!</p>
+                <p className="text-green-100 text-sm">Responders have been alerted</p>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.button
+              key="sos-btn"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={handleSOS}
+              className="w-full rounded-3xl bg-red-500 p-5 flex items-center justify-between
+                         shadow-lg active:shadow-[0_0_20px_rgba(239,68,68,0.3)]
+                         transition-shadow duration-150"
+              style={{
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              }}
+            >
+              <div className="flex items-center gap-4">
+                {/* Pulsing ring */}
+                <div className="relative flex-shrink-0">
+                  <span className="absolute inset-0 rounded-full bg-white/30 animate-ping" />
+                  <div className="relative w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-3xl">
+                    🚨
+                  </div>
+                </div>
                 <div className="text-left">
-                  <p className="font-medium text-gray-900">Emergency Services</p>
-                  <p className="text-xs text-gray-600">911</p>
+                  <p className="font-black text-xl text-red-100 leading-none">Send SOS</p>
+                  <p className="text-red-100 text-sm mt-1">Alert all emergency responders</p>
                 </div>
               </div>
-              <span className="text-blue-600 text-sm font-medium">Call</span>
-            </button>
-          </div>
-        </Card>
+              <ChevronRight className="w-6 h-6 text-red-200 flex-shrink-0" />
+            </motion.button>
+          )}
+        </AnimatePresence>
 
-        {/* Safety Tips */}
-        <Card className="p-5 bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-          <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-green-900 mb-2">Safety First</h3>
-              <p className="text-sm text-green-800">
-                Stay calm, assess the situation, and prioritize your safety. Help is always available.
-              </p>
-            </div>
+        {/* ── TIER 2: High urgency — 2 equal cards ── */}
+        <div className="grid grid-cols-2 gap-3">
+          {TIER_2.map((item, i) => (
+            <motion.button
+              key={item.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 + i * 0.05 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => navigate(item.action)}
+              className="rounded-2xl bg-white border border-gray-200 p-4 text-left
+                         hover:border-gray-300 hover:bg-gray-50 transition-colors duration-150
+                         active:bg-[#1f1f1f]"
+            >
+              <div className="text-3xl mb-3">{item.icon}</div>
+              <p className="font-bold text-sm leading-tight">{item.title}</p>
+              <p className="text-gray-600 text-xs mt-1">{item.subtitle}</p>
+            </motion.button>
+          ))}
+        </div>
+
+        {/* ── Divider with label ── */}
+        <div className="flex items-center gap-3 py-1">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs text-gray-500 tracking-widest uppercase font-medium">Also available</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
+
+        {/* ── TIER 3: Medium urgency — compact row cards ── */}
+        <div className="space-y-2">
+          {TIER_3.map((item, i) => (
+            <motion.button
+              key={item.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 + i * 0.05 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate(item.action)}
+              className="w-full rounded-2xl bg-white border border-gray-200 px-4 py-3.5
+                         flex items-center gap-4 text-left
+                         hover:border-gray-300 hover:bg-gray-50 transition-colors duration-150"
+            >
+              <span className="text-2xl flex-shrink-0">{item.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">{item.title}</p>
+                <p className="text-gray-500 text-xs">{item.subtitle}</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            </motion.button>
+          ))}
+        </div>
+
+        {/* ── Emergency Call — always visible, bottom-anchored feel ── */}
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          onClick={() => window.open('tel:911')}
+          className="w-full rounded-2xl border border-blue-200 bg-blue-50
+                     px-4 py-4 flex items-center gap-4 text-left
+                     hover:bg-blue-100 transition-colors duration-150 active:bg-blue-500/20"
+        >
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+            <Phone className="w-5 h-5 text-blue-400" />
           </div>
-        </Card>
+          <div className="flex-1">
+            <p className="font-bold text-sm text-blue-900">Call 911</p>
+            <p className="text-blue-600 text-xs">Emergency Services</p>
+          </div>
+          <span className="text-blue-400 text-sm font-semibold">Call</span>
+        </motion.button>
+
+        {/* ── Safety reminder — lowest priority, subtle ── */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="flex items-start gap-3 px-1 pt-1"
+        >
+          <CheckCircle className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Stay calm, assess the situation, and prioritize your safety. Help is always available.
+          </p>
+        </motion.div>
+
       </div>
     </div>
   );
