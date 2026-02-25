@@ -22,12 +22,7 @@ interface Feature {
 }
 
 export function HomePage({ onNavigate, onOpenAssistant }: HomePageProps) {
-  const stats = [
-    { label: 'Response Time', value: '< 2s', icon: Zap, color: 'text-yellow-500' },
-    { label: 'Users Protected', value: '1.2K+', icon: Users, color: 'text-blue-500' },
-    { label: 'Success Rate', value: '99.8%', icon: Activity, color: 'text-green-500' },
-  ];
-
+ 
   const features: Feature[] = [
     {
       title: 'Smart Navigation',
@@ -84,26 +79,6 @@ export function HomePage({ onNavigate, onOpenAssistant }: HomePageProps) {
             Your intelligent companion for emergency evacuation
           </p>
         </motion.div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="px-6 pb-8">
-        <div className="grid grid-cols-3 gap-3">
-          {stats.map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-            >
-              <Card className="p-4 bg-white/10 backdrop-blur-md border-white/20 text-center">
-                <stat.icon className={`w-6 h-6 ${stat.color} mx-auto mb-2`} />
-                <p className="text-2xl font-bold text-white">{stat.value}</p>
-                <p className="text-xs text-blue-100">{stat.label}</p>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
       </div>
 
       {/* Features Section */}
