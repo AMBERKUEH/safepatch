@@ -2,7 +2,12 @@ import { motion } from 'motion/react';
 import { Shield, ArrowRight, Zap, Users, Activity } from 'lucide-react';
 import { Card } from '../ui/card';
 
-export function HomePage() {
+type Props = {
+  setCurrentPage: (page: 'home' | 'navigation' | 'gesture' | 'emergency' | 'dashboard' | 'ai') => void;
+};
+
+export function HomePage({ setCurrentPage }: Props) {
+  // const navigate = useNavigate();
   const stats = [
     { label: 'Response Time', value: '< 2s', icon: Zap, color: 'text-yellow-500' },
     { label: 'Users Protected', value: '1.2K+', icon: Users, color: 'text-blue-500' },
@@ -27,6 +32,7 @@ export function HomePage() {
       description: 'Calm guidance and emergency support',
       icon: '🤖',
       gradient: 'from-green-500 to-emerald-500',
+      page: 'ai',
     },
     {
       title: 'Emergency Aid',
@@ -35,6 +41,12 @@ export function HomePage() {
       gradient: 'from-red-500 to-orange-500',
     },
   ];
+
+  const handleFeatureClick = (feature: any) => {
+    if (feature.page) {
+      setCurrentPage(feature.page);
+    }
+  };
 
   return (
     <div className="min-h-full bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800">
@@ -90,7 +102,10 @@ export function HomePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 + index * 0.1 }}
             >
-              <Card className="p-5 hover:shadow-lg transition-shadow cursor-pointer">
+              <Card
+                onClick={() => handleFeatureClick(feature)} // ⭐ CLICK HANDLER
+                className="p-5 hover:shadow-lg transition-shadow cursor-pointer active:scale-95"
+              >
                 <div className="flex items-center gap-4">
                   <div
                     className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center text-3xl`}

@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -16,7 +19,7 @@ const io = new Server(httpServer, {
 
 app.use(cors({ origin: ['http://localhost:5173', 'http://127.0.0.1:5173'] }));
 app.use(express.json());
-app.use('/api', aiRouter);
+app.use('/api/ai', aiRouter);
 
 // In-memory state for demo (replace with DB in production)
 const occupants = new Map(); // socketId -> { id, name, position, status, distanceToExit, lastSeen }
@@ -118,3 +121,21 @@ httpServer.listen(PORT, () => {
   console.log(`SafePath server: http://localhost:${PORT}`);
   console.log(`Socket.io ready for client connections`);
 });
+
+// After mounting the router
+console.log('AI Router mounted at /api');
+
+// Print all routes
+// Add this debugging code
+console.log('\n--- Routes inside AI Router ---');
+if (aiRouter.stack) {
+  aiRouter.stack.forEach((layer) => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
+      console.log(`${methods} ${layer.route.path}`);
+    }
+  });
+}
+
+console.log("Loaded Gemini key:", process.env.GEMINI_API_KEY?.slice(0, 8));
+console.log("Gemini Key Length:", process.env.GEMINI_API_KEY?.length);

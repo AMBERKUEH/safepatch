@@ -6,9 +6,10 @@ import { NavigationPage } from './components/pages/NavigationPage';
 import { GesturePage } from './components/pages/GesturePage';
 import { EmergencyPage } from './components/pages/EmergencyPage';
 import { DashboardPage } from './components/pages/DashboardPage';
-import { FloatingAIAssistant } from './components/FloatingAIAssistant';
+import FloatingAIAssistant from './components/FloatingAIAssistant';
+import AICompanionPage from './components/pages/AICompanionPage';
 
-type Page = 'home' | 'navigation' | 'gesture' | 'emergency' | 'dashboard';
+type Page = 'home' | 'navigation' | 'gesture' | 'emergency' | 'dashboard' | 'ai';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -34,11 +35,15 @@ function App() {
             transition={{ duration: 0.2 }}
             className="h-full"
           >
-            {currentPage === 'home' && <HomePage />}
+            {currentPage === 'home' && (
+              <HomePage setCurrentPage={setCurrentPage} />
+            )}
             {currentPage === 'navigation' && <NavigationPage />}
             {currentPage === 'gesture' && <GesturePage />}
             {currentPage === 'emergency' && <EmergencyPage />}
             {currentPage === 'dashboard' && <DashboardPage />}
+            {currentPage === 'ai' && <AICompanionPage />}
+
           </motion.div>
         </AnimatePresence>
       </main>
