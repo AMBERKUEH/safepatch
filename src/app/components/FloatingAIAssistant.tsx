@@ -37,6 +37,14 @@ export function FloatingAIAssistant() {
 
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -181,8 +189,8 @@ export function FloatingAIAssistant() {
             className="fixed bottom-24 right-6 w-[360px] h-[520px] z-50 flex flex-col"
           >
             <Card className="flex flex-col h-full shadow-2xl border-2 border-gray-200 overflow-hidden">
-              {/* Header */}
-              <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-4 py-3 text-white flex justify-between items-center">
+              {/* Header - Fixed height */}
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-4 py-3 text-white flex justify-between items-center flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <Bot className="w-6 h-6" />
                   <div>
@@ -196,24 +204,24 @@ export function FloatingAIAssistant() {
                     onClick={() => setVoiceEnabled(!voiceEnabled)}
                     variant="ghost"
                     size="sm"
-                    className="text-white hover:bg-white/20"
+                    className="text-white hover:bg-white/20 h-8 w-8 p-0"
                   >
-                    {voiceEnabled ? <Volume2 /> : <VolumeX />}
+                    {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                   </Button>
                   <Button
                     onClick={() => setIsOpen(false)}
                     variant="ghost"
                     size="sm"
-                    className="text-white hover:bg-white/20"
+                    className="text-white hover:bg-white/20 h-8 w-8 p-0"
                   >
-                    <X />
+                    <X className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Messages */}
-              <ScrollArea className="flex-1 p-4 bg-gray-50">
-                <div className="space-y-3">
+              {/* Messages - Scrollable area with proper height constraints */}
+              <ScrollArea className="flex-1 min-h-0 bg-gray-50">
+                <div className="p-4 space-y-3">
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
@@ -230,28 +238,34 @@ export function FloatingAIAssistant() {
                       >
                         {msg.text}
                         <p className="text-[10px] opacity-60 mt-1">
-                          {msg.timestamp.toLocaleTimeString()}
+                          {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </div>
                   ))}
 
                   {isLoading && (
-                    <div className="text-xs text-gray-500">
-                      SafePath AI is analyzing situation...
+                    <div className="flex justify-start">
+                      <div className="bg-white px-4 py-2 rounded-2xl text-sm text-gray-500">
+                        SafePath AI is analyzing situation...
+                      </div>
                     </div>
                   )}
+                  
+                  {/* Invisible element to scroll to */}
+                  <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
 
-              {/* Quick Replies */}
+              {/* Quick Replies - Fixed height if present */}
               {messages.length <= 2 && (
-                <div className="px-3 py-2 bg-white border-t flex flex-wrap gap-2">
+                <div className="px-3 py-2 bg-white border-t flex flex-wrap gap-2 flex-shrink-0">
                   {quickReplies.map((reply) => (
                     <button
                       key={reply.text}
                       onClick={() => sendMessage(reply.text)}
                       className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-xs"
+                      disabled={isLoading}
                     >
                       {reply.icon} {reply.text}
                     </button>
@@ -259,8 +273,8 @@ export function FloatingAIAssistant() {
                 </div>
               )}
 
-              {/* Input Area */}
-              <div className="bg-white border-t p-3">
+              {/* Input Area - Fixed height */}
+              <div className="bg-white border-t p-3 flex-shrink-0">
                 <div className="flex gap-2">
                   <Input
                     value={input}
@@ -278,17 +292,19 @@ export function FloatingAIAssistant() {
                     onClick={startListening}
                     size="sm"
                     className={`h-9 w-9 p-0 ${
-                      isListening ? 'bg-red-500' : 'bg-gray-600'
+                      isListening ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-600 hover:bg-gray-700'
                     }`}
+                    disabled={isLoading}
                   >
-                    {isListening ? <MicOff /> : <Mic />}
+                    {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                   </Button>
 
                   {/* Send Button */}
                   <Button
                     onClick={() => sendMessage(input)}
                     size="sm"
-                    className="bg-gradient-to-r from-green-600 to-emerald-600 h-9 w-9 p-0"
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 h-9 w-9 p-0 hover:from-green-700 hover:to-emerald-700"
+                    disabled={!input.trim() || isLoading}
                   >
                     <Send className="w-4 h-4" />
                   </Button>

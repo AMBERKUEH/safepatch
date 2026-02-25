@@ -6,8 +6,6 @@ export async function chatWithAI(message: string) {
     },
     body: JSON.stringify({
       message,
-      emergencyLevel: 'safe',
-      distanceToExit: 15,
       history: [],
     }),
   });
