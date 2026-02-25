@@ -6,16 +6,10 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
 
-interface FloatingAIAssistantProps {
-  isOpen: boolean;
-  onOpen: () => void;
-  onClose: () => void;
-}
-
 interface Message {
   id: string;
-  role: 'user' | 'ai';
   text: string;
+  sender: 'ai' | 'user';
   timestamp: Date;
 }
 
@@ -28,7 +22,8 @@ const AI_RESPONSES: Record<string, string> = {
   default: "Stay calm and follow my guidance. I'm monitoring the situation and will keep you safe.",
 };
 
-export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssistantProps) {
+export function FloatingAIAssistant() {
+  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -50,129 +45,46 @@ export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssis
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
 
-    // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
-      role: 'user',
-      text: text,
+      text,
+      sender: 'user',
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
 
-    // Simulate AI response (replace with your actual AI logic)
-    setTimeout(() => {
-      const level = detectEmergencyLevel(text);
-      const responseText = getAIResponse(text);
-      
+    setMessages((prev) => [...prev, userMessage]);
+    setInput('');
+
+    try {
+      const { chatWithAI } = await import('../api/client');
+      const response = await chatWithAI(text);
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        role: 'ai',
-        text: responseText,
+        text: response,
+        sender: 'ai',
         timestamp: new Date(),
-        emergencyLevel: level,
       };
-      setMessages(prev => [...prev, aiMessage]);
-      setIsLoading(false);
-      
-      // Speak the response
-      speak(responseText, level);
-    }, 1000);
-  };
-
-  const detectEmergencyLevel = (text: string): 'safe' | 'warning' | 'critical' => {
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('heart attack') || lowerText.includes('bleeding') || lowerText.includes('unconscious') || lowerText.includes('emergency')) {
-      setEmergencyLevel('critical');
-      return 'critical';
-    }
-    if (lowerText.includes('hurt') || lowerText.includes('pain') || lowerText.includes('accident') || lowerText.includes('help')) {
-      setEmergencyLevel('warning');
-      return 'warning';
-    }
-    setEmergencyLevel('safe');
-    return 'safe';
-  };
-
-  const getAIResponse = (text: string): string => {
-    // Simple response logic - replace with your actual AI
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('hello') || lowerText.includes('hi')) {
-      return "Hello! I'm ARIA, your safety companion. How can I help you today?";
-    }
-    if (lowerText.includes('help')) {
-      return "I'm here to help. Please describe your situation, and I'll provide safety guidance.";
-    }
-    if (lowerText.includes('heart attack')) {
-      return "If someone is having a heart attack, first call 911 immediately. Have them sit or lie down and loosen any tight clothing. If they're conscious, help them take any prescribed medication. Stay on the line with me and I'll guide you through what to do next.";
-    }
-    if (lowerText.includes('bleeding')) {
-      return "For severe bleeding, call 911 immediately. Apply firm pressure with a clean cloth and elevate the wound if possible. Do not remove any objects that are embedded in the wound. Keep applying pressure until help arrives. I'm here with you.";
-    }
-    if (lowerText.includes('fire')) {
-      return "If there's a fire, get out immediately and call 911. Stay low to avoid smoke, and check doors for heat before opening. Never go back inside for anything. Once you're safe, I can help you with next steps.";
-    }
-    return "I understand you need assistance. Could you provide more details about your situation so I can give you the most appropriate safety guidance? I'm here to help and will stay with you.";
-  };
-
-  const handleSOS = () => {
-    setSosSent(true);
-    const sosMessage: Message = {
-      id: Date.now().toString(),
-      role: 'ai',
-      text: "🚨 SOS SIGNAL SENT - EMERGENCY SERVICES NOTIFIED\n\nStay calm. Help is on the way. I'll stay with you until they arrive.\n\n• Keep the line open\n• Follow any instructions from dispatchers\n• Stay where you are if safe\n• Unlock doors if possible",
-      timestamp: new Date(),
-      emergencyLevel: 'critical',
-    };
-    setMessages(prev => [...prev, sosMessage]);
-    setEmergencyLevel('critical');
-    
-    // Speak SOS message
-    speak("SOS signal sent. Emergency services have been notified. Stay calm, help is on the way. I'll stay with you until they arrive.", 'critical');
-    
-    // Reset SOS sent status after 5 seconds (for demo)
-    setTimeout(() => setSosSent(false), 5000);
-  };
-
-  const levelConfig = {
-    safe: {
-      bg: 'bg-emerald-50',
-      border: 'border-emerald-200',
-      dot: 'bg-emerald-500',
-      color: 'text-emerald-700',
-      label: 'SAFE MODE',
-    },
-    warning: {
-      bg: 'bg-amber-50',
-      border: 'border-amber-200',
-      dot: 'bg-amber-500',
-      color: 'text-amber-700',
-      label: 'WARNING',
-    },
-    critical: {
-      bg: 'bg-red-50',
-      border: 'border-red-200',
-      dot: 'bg-red-500',
-      color: 'text-red-700',
-      label: 'CRITICAL',
-    },
-  }[emergencyLevel];
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (inputText.trim()) {
-        handleSendMessage(inputText);
-        setInputText('');
-      }
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch {
+      const response = getAIResponse(text);
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: response,
+        sender: 'ai',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, aiMessage]);
     }
   };
 
-  const stopSpeaking = () => {
-    if (synth.speaking) {
-      synth.cancel();
-      setIsSpeaking(false);
-    }
+  const getAIResponse = (userText: string): string => {
+    const text = userText.toLowerCase();
+    if (text.includes('scared') || text.includes('afraid')) return AI_RESPONSES.scared;
+    if (text.includes('smoke')) return AI_RESPONSES.smoke;
+    if (text.includes('injured') || text.includes('hurt')) return AI_RESPONSES.injured;
+    if (text.includes('exit')) return AI_RESPONSES.exit;
+    if (text.includes('help')) return AI_RESPONSES.help;
+    return AI_RESPONSES.default;
   };
 
   return (
@@ -186,7 +98,7 @@ export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssis
             exit={{ scale: 0, opacity: 0 }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onOpen}
+            onClick={() => setIsOpen(true)}
             className="fixed bottom-24 right-6 w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full shadow-2xl flex items-center justify-center z-50"
           >
             <Bot className="w-7 h-7 text-white" />
@@ -197,7 +109,7 @@ export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssis
             />
           </motion.button>
         )}
-      </button>
+      </AnimatePresence>
 
       {/* Chat Window */}
       <AnimatePresence>
@@ -245,7 +157,7 @@ export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssis
                       )}
                     </Button>
                     <Button
-                      onClick={onClose}
+                      onClick={() => setIsOpen(false)}
                       variant="ghost"
                       size="sm"
                       className="text-white hover:bg-white/20 h-8 w-8 p-0"
@@ -254,122 +166,91 @@ export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssis
                     </Button>
                   </div>
                 </div>
-                <p className="text-gray-500 text-sm mb-2">Hello, I'm ARIA</p>
-                <p className="text-gray-400 text-xs">Your AI safety companion. How can I help you today?</p>
-                <button
-                  onClick={() => handleSendMessage("Hello")}
-                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 transition-colors"
-                >
-                  Say Hello
-                </button>
               </div>
-            )}
 
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white rounded-br-md'
-                      : msg.emergencyLevel === 'critical'
-                        ? 'bg-red-50 border border-red-200 text-red-800 rounded-bl-md'
-                        : msg.emergencyLevel === 'warning'
-                          ? 'bg-amber-50 border border-amber-200 text-amber-800 rounded-bl-md'
-                          : 'bg-white border border-gray-200 text-gray-800 rounded-bl-md shadow-sm'
-                  }`}
-                >
-                  {msg.role === 'ai' && msg.emergencyLevel === 'critical' && (
-                    <div className="flex items-center gap-1 mb-1 pb-1 border-b border-red-200">
-                      <span className="text-red-600 text-xs">⚠</span>
-                      <span className="text-red-600 text-[8px] font-bold">EMERGENCY</span>
-                    </div>
-                  )}
-                  <p className="whitespace-pre-wrap text-sm">{msg.text}</p>
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-[8px] opacity-60">
-                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    {msg.role === 'ai' && (
-                      <button
-                        onClick={() => speak(msg.text, msg.emergencyLevel)}
-                        className="text-[8px] opacity-60 hover:opacity-100 transition-opacity"
-                      >
-                        🔈 Replay
-                      </button>
-                    )}
-                  </div>
+              {/* Messages */}
+              <ScrollArea className="flex-1 p-4 bg-gray-50">
+                <div className="space-y-3">
+                  {messages.map((message) => (
+                    <motion.div
+                      key={message.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`flex gap-2 max-w-[85%] ${message.sender === 'user' ? 'flex-row-reverse' : ''}`}>
+                        {/* Avatar */}
+                        {message.sender === 'ai' && (
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center flex-shrink-0">
+                            <Bot className="w-4 h-4 text-white" />
+                          </div>
+                        )}
+
+                        {/* Message Bubble */}
+                        <div>
+                          <div
+                            className={`px-3 py-2 rounded-2xl ${
+                              message.sender === 'user'
+                                ? 'bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-tr-sm'
+                                : 'bg-white text-gray-900 rounded-tl-sm shadow-sm'
+                            }`}
+                          >
+                            <p className="text-sm leading-relaxed">{message.text}</p>
+                          </div>
+                          <p className={`text-xs text-gray-500 mt-1 px-1 ${message.sender === 'user' ? 'text-right' : ''}`}>
+                            {message.timestamp.toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
-              </div>
-            ))}
+              </ScrollArea>
 
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3">
-                  <div className="flex gap-1 items-center">
-                    {[0, 1, 2].map(i => (
-                      <div
-                        key={i}
-                        className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
-                        style={{ animationDelay: `${i * 150}ms` }}
-                      />
+              {/* Quick Replies */}
+              {messages.length <= 2 && (
+                <div className="px-3 py-2 bg-white border-t">
+                  <div className="flex flex-wrap gap-2">
+                    {quickReplies.map((reply) => (
+                      <button
+                        key={reply.text}
+                        onClick={() => sendMessage(reply.text)}
+                        className="flex-shrink-0 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-medium transition-colors"
+                      >
+                        <span className="mr-1">{reply.icon}</span>
+                        {reply.text}
+                      </button>
                     ))}
                   </div>
                 </div>
+              )}
+
+              {/* Input */}
+              <div className="bg-white border-t p-3">
+                <div className="flex gap-2">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && sendMessage(input)}
+                    placeholder="Type a message..."
+                    className="flex-1 text-sm"
+                  />
+                  <Button
+                    onClick={() => sendMessage(input)}
+                    size="sm"
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 h-9 w-9 p-0"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Voice Control */}
-          <div className="px-3 pt-2">
-            <VoiceControl
-              isListening={isListening}
-              setIsListening={setIsListening}
-              isLoading={isLoading}
-              onTranscript={handleSendMessage}
-              emergencyLevel={emergencyLevel}
-            />
-          </div>
-
-          {/* Input area */}
-          <div className="p-3 border-t border-gray-200 bg-white">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type a message..."
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-                disabled={isLoading}
-              />
-              <button
-                onClick={handleSOS}
-                className="px-3 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition-colors shadow-sm"
-              >
-                SOS
-              </button>
-              <button
-                onClick={() => {
-                  if (inputText.trim()) {
-                    handleSendMessage(inputText);
-                    setInputText('');
-                  }
-                }}
-                disabled={!inputText.trim() || isLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                Send
-              </button>
-            </div>
-            <p className="text-[8px] text-gray-400 mt-2 text-center">
-              Voice input available • ARIA speaks back • Click 🔈 to replay
-            </p>
-          </div>
-        </div>
-      )}
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
-};
-
-export default FloatingAIAssistant;
+}

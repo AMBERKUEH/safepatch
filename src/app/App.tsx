@@ -6,7 +6,7 @@ import { NavigationPage } from './components/pages/NavigationPage';
 import { EmergencyPage } from './components/pages/EmergencyPage';
 import { DashboardPage } from './components/pages/DashboardPage';
 import { MeshNetworkPage } from './components/pages/MeshNetworkPage';
-import FloatingAIAssistant from './components/FloatingAIAssistant';
+import { FloatingAIAssistant } from './components/FloatingAIAssistant';
 import { useSocket } from './hooks/useSocket';
 import { useMeshEngine } from '../mesh/hooks/useMeshEngine';
 import AICompanionPage from './components/pages/AICompanionPage';
@@ -77,9 +77,9 @@ function App() {
 
       {/* Floating AI Assistant */}
       <FloatingAIAssistant
-        isOpen={isAssistantOpen}
-        onOpen={() => setIsAssistantOpen(true)}
-        onClose={() => setIsAssistantOpen(false)}
+        // isOpen={isAssistantOpen}
+        // onOpen={() => setIsAssistantOpen(true)}
+        // onClose={() => setIsAssistantOpen(false)}
       />
 
       {/* Bottom Navigation */}
