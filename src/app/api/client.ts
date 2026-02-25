@@ -1,19 +1,21 @@
-const API_BASE = process.env.VITE_API_URL || 'http://localhost:3001';
-
-export interface ChatResponse {
-  reply: string;
-}
-
-export async function chatWithAI(message: string, distanceToExit?: number): Promise<string> {
-  const response = await fetch(`${API_BASE}/api/ai/chat`, {
+export async function chatWithAI(message: string) {
+  const response = await fetch('http://localhost:3001/api/ai/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, distanceToExit }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message,
+      emergencyLevel: 'safe',
+      distanceToExit: 15,
+      history: [],
+    }),
   });
+
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'AI request failed');
+    throw new Error('AI request failed');
   }
-  const data = (await response.json()) as ChatResponse;
+
+  const data = await response.json();
   return data.reply;
 }
