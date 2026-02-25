@@ -1,23 +1,38 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Navigation, Hand, AlertCircle, LayoutDashboard } from 'lucide-react';
+import { Home, Navigation, AlertCircle, LayoutDashboard, Share2 } from 'lucide-react';
 import { HomePage } from './components/pages/HomePage';
 import { NavigationPage } from './components/pages/NavigationPage';
-import { GesturePage } from './components/pages/GesturePage';
 import { EmergencyPage } from './components/pages/EmergencyPage';
 import { DashboardPage } from './components/pages/DashboardPage';
+import { MeshNetworkPage } from './components/pages/MeshNetworkPage';
 import FloatingAIAssistant from './components/FloatingAIAssistant';
+import { useSocket } from './hooks/useSocket';
+import { useMeshEngine } from '../mesh/hooks/useMeshEngine';
 import AICompanionPage from './components/pages/AICompanionPage';
 
-type Page = 'home' | 'navigation' | 'gesture' | 'emergency' | 'dashboard' | 'ai';
+type Page = 'home' | 'navigation' | 'emergency' | 'dashboard' | 'mesh' | 'ai';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const { socket, connected } = useSocket();
+
+  // Mesh engine — auto-activates as a standalone feature
+  const {
+    peerCount,
+    lastSOS,
+    lastAckedMsgId,
+    isActive: meshActive,
+    sendSOS: meshSendSOS,
+    relayHazard,
+    relayLocation,
+  } = useMeshEngine(socket);
 
   const navigation = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'navigation', icon: Navigation, label: 'Navigate' },
-    { id: 'gesture', icon: Hand, label: 'Gestures' },
+    { id: 'mesh', icon: Share2, label: 'Mesh' },
     { id: 'emergency', icon: AlertCircle, label: 'Emergency' },
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   ];
@@ -25,7 +40,7 @@ function App() {
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto pb-20">
+      <main className="flex-1 overflow-y-auto pb-28">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentPage}
@@ -36,10 +51,22 @@ function App() {
             className="h-full"
           >
             {currentPage === 'home' && (
-              <HomePage setCurrentPage={setCurrentPage} />
+              <HomePage
+                onNavigate={(page) => setCurrentPage(page as Page)}
+                onOpenAssistant={() => setIsAssistantOpen(true)}
+              />
             )}
             {currentPage === 'navigation' && <NavigationPage />}
-            {currentPage === 'gesture' && <GesturePage />}
+            {currentPage === 'mesh' && (
+              <MeshNetworkPage
+                peerCount={peerCount}
+                lastSOS={lastSOS}
+                lastAckedMsgId={lastAckedMsgId}
+                isActive={meshActive}
+                onSendSOS={() => meshSendSOS(0, 0)} // Placeholder coords, user can trigger real SOS on navigation page
+                onRelayHazard={() => relayHazard(JSON.stringify({ type: 'test', value: 1 }))}
+              />
+            )}
             {currentPage === 'emergency' && <EmergencyPage />}
             {currentPage === 'dashboard' && <DashboardPage />}
             {currentPage === 'ai' && <AICompanionPage />}
@@ -49,7 +76,11 @@ function App() {
       </main>
 
       {/* Floating AI Assistant */}
-      <FloatingAIAssistant />
+      <FloatingAIAssistant
+        isOpen={isAssistantOpen}
+        onOpen={() => setIsAssistantOpen(true)}
+        onClose={() => setIsAssistantOpen(false)}
+      />
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40">
@@ -58,7 +89,7 @@ function App() {
             {navigation.map((item) => {
               const Icon = item.icon;
               const isActive = currentPage === item.id;
-              
+
               return (
                 <button
                   key={item.id}
@@ -66,14 +97,12 @@ function App() {
                   className="flex-1 py-3 flex flex-col items-center gap-1 relative"
                 >
                   <Icon
-                    className={`w-6 h-6 transition-colors ${
-                      isActive ? 'text-blue-600' : 'text-gray-400'
-                    }`}
+                    className={`w-6 h-6 transition-colors ${isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}
                   />
                   <span
-                    className={`text-xs transition-colors ${
-                      isActive ? 'text-blue-600 font-medium' : 'text-gray-500'
-                    }`}
+                    className={`text-xs transition-colors ${isActive ? 'text-blue-600 font-medium' : 'text-gray-500'
+                      }`}
                   >
                     {item.label}
                   </span>

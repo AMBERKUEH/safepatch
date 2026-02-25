@@ -1,7 +1,7 @@
 
-  # SafePath AI – Emergency Evacuation System
+# SafePath AI – Emergency Evacuation System
 
-  Real-time intelligent emergency evacuation with navigation, gesture control, AI companion, and responder dashboard.
+Real-time intelligent emergency evacuation with navigation (2D + AR + gesture SOS), AI companion, and responder dashboard.
 
   ## Running the app (frontend + backend)
 

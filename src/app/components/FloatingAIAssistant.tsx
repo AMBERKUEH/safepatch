@@ -1,99 +1,54 @@
-// FloatingAICompanion.tsx
-import React, { useState, useEffect, useRef } from 'react';
-import VoiceControl from './VoiceControl'; // Adjust import path as needed
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Bot, Send, X, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { Card } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { ScrollArea } from './ui/scroll-area';
+
+interface FloatingAIAssistantProps {
+  isOpen: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}
 
 interface Message {
   id: string;
   role: 'user' | 'ai';
   text: string;
   timestamp: Date;
-  emergencyLevel?: 'safe' | 'warning' | 'critical';
 }
 
-const FloatingAIAssistant: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [inputText, setInputText] = useState('');
-  const [emergencyLevel, setEmergencyLevel] = useState<'safe' | 'warning' | 'critical'>('safe');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [sosSent, setSosSent] = useState(false);
-  
-  // Text-to-speech setup
-  const synth = window.speechSynthesis;
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [speechRate, setSpeechRate] = useState(1);
-  const [speechPitch, setSpeechPitch] = useState(1);
+const AI_RESPONSES: Record<string, string> = {
+  scared: "I understand this is frightening. Take a deep breath. I'm here with you. Focus on my voice and follow the safe path.",
+  smoke: 'Stay low to the ground where the air is clearer. Cover your nose and mouth with cloth if possible.',
+  injured: "I'm alerting emergency responders to your location. If you can move, continue slowly. If not, stay where you are.",
+  help: "I'm here to guide you. Follow the blue path on your screen. You're doing great. Stay calm.",
+  exit: "The nearest safe exit is approximately 45 meters ahead. Keep following the path I'm showing you.",
+  default: "Stay calm and follow my guidance. I'm monitoring the situation and will keep you safe.",
+};
 
-  // Load available voices
-  useEffect(() => {
-    const loadVoices = () => {
-      const availableVoices = synth.getVoices();
-      setVoices(availableVoices);
-    };
-    
-    loadVoices();
-    if (synth.onvoiceschanged !== undefined) {
-      synth.onvoiceschanged = loadVoices;
-    }
-  }, [synth]);
+export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssistantProps) {
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '1',
+      text: "Hi! I'm your SafePath AI assistant. I'm here to help guide you safely. How can I assist you?",
+      sender: 'ai',
+      timestamp: new Date(),
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
 
-  // Auto-scroll to latest message
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  const quickReplies = [
+    { text: "I'm scared", icon: '😰' },
+    { text: 'Where is exit?', icon: '🚪' },
+    { text: 'I see smoke', icon: '💨' },
+    { text: 'Help me', icon: '🆘' },
+  ];
 
-  // Stop speaking when component unmounts
-  useEffect(() => {
-    return () => {
-      if (synth.speaking) {
-        synth.cancel();
-      }
-    };
-  }, [synth]);
-
-  const speak = (text: string, level: 'safe' | 'warning' | 'critical' = 'safe') => {
-    if (synth.speaking) {
-      synth.cancel();
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Adjust voice based on emergency level
-    if (level === 'critical') {
-      utterance.rate = 0.9; // Slower for clarity
-      utterance.pitch = 0.9; // Lower, more serious pitch
-      utterance.volume = 1;
-    } else if (level === 'warning') {
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = 0.9;
-    } else {
-      utterance.rate = 1.1; // Slightly faster for normal conversation
-      utterance.pitch = 1.1; // Slightly higher for friendly tone
-      utterance.volume = 0.8;
-    }
-
-    // Try to find a good voice
-    const preferredVoice = voices.find(voice => 
-      voice.lang.includes('en') && voice.name.includes('Google') || voice.name.includes('Natural')
-    ) || voices.find(voice => voice.lang.includes('en')) || voices[0];
-    
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-    }
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    synth.speak(utterance);
-  };
-
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+  const sendMessage = async (text: string) => {
+    if (!text.trim()) return;
 
     // Add user message
     const userMessage: Message = {
@@ -222,91 +177,82 @@ const FloatingAIAssistant: React.FC = () => {
 
   return (
     <>
-      {/* Floating button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95
-          ${isOpen 
-            ? 'bg-gray-200 rotate-90' 
-            : emergencyLevel === 'critical'
-              ? 'bg-red-600 animate-pulse'
-              : emergencyLevel === 'warning'
-                ? 'bg-amber-500'
-                : 'bg-blue-600'
-          }`}
-      >
-        {isOpen ? (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        ) : (
-          <div className="relative">
-            <span className="text-2xl text-white">🛡️</span>
-            {emergencyLevel === 'critical' && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping" />
-            )}
-          </div>
+      {/* Floating Button */}
+      <AnimatePresence>
+        {!isOpen && (
+          <motion.button
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onOpen}
+            className="fixed bottom-24 right-6 w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full shadow-2xl flex items-center justify-center z-50"
+          >
+            <Bot className="w-7 h-7 text-white" />
+            <motion.div
+              animate={{ scale: [1, 1.3, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full border-2 border-white"
+            />
+          </motion.button>
         )}
       </button>
 
-      {/* Chat window */}
-      {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-96 h-[600px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
-          
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-xl">
-                  🛡️
-                </div>
-                <div>
-                  <div className="font-bold text-sm">ARIA</div>
-                  <div className="text-[10px] text-white/80">AI Safety Companion</div>
-                </div>
-              </div>
-              <div className={`flex items-center gap-2 px-2 py-1 rounded-full ${levelConfig.bg} ${levelConfig.border}`}>
-                <div className="relative flex h-2 w-2">
-                  <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${levelConfig.dot}`} />
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${levelConfig.dot.replace(' animate-ping', '')}`} />
-                </div>
-                <span className={`text-[9px] font-bold ${levelConfig.color}`}>{levelConfig.label}</span>
-              </div>
-            </div>
-            
-            {/* Voice/speaking controls */}
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex items-center gap-1">
-                {isSpeaking && (
-                  <>
-                    {[3, 5, 4, 6, 3].map((h, i) => (
-                      <div
-                        key={i}
-                        className="w-0.5 bg-white rounded-full animate-pulse"
-                        style={{ height: `${h}px`, animationDelay: `${i * 100}ms` }}
+      {/* Chat Window */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 100, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 100, scale: 0.9 }}
+            className="fixed bottom-24 right-6 w-[340px] h-[500px] z-50 flex flex-col"
+          >
+            <Card className="flex flex-col h-full shadow-2xl border-2 border-gray-200 overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-4 py-3 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                        <Bot className="w-5 h-5" />
+                      </div>
+                      <motion.div
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{ repeat: Infinity, duration: 2 }}
+                        className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-yellow-400 rounded-full border-2 border-white"
                       />
-                    ))}
-                    <span className="text-[10px] text-white/80 ml-2">ARIA is speaking...</span>
-                  </>
-                )}
-              </div>
-              {isSpeaking && (
-                <button
-                  onClick={stopSpeaking}
-                  className="text-[10px] bg-white/20 hover:bg-white/30 px-2 py-1 rounded-full transition-colors"
-                >
-                  Stop
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-            {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-3xl mb-3 animate-pulse">
-                  🛡️
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">SafePath AI</h3>
+                      <div className="flex items-center gap-1 text-xs text-green-100">
+                        <div className="w-1.5 h-1.5 bg-green-300 rounded-full" />
+                        <span>Online</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      onClick={() => setVoiceEnabled(!voiceEnabled)}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20 h-8 w-8 p-0"
+                    >
+                      {voiceEnabled ? (
+                        <Volume2 className="w-4 h-4" />
+                      ) : (
+                        <VolumeX className="w-4 h-4" />
+                      )}
+                    </Button>
+                    <Button
+                      onClick={onClose}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-white/20 h-8 w-8 p-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
                 <p className="text-gray-500 text-sm mb-2">Hello, I'm ARIA</p>
                 <p className="text-gray-400 text-xs">Your AI safety companion. How can I help you today?</p>
