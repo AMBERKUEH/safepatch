@@ -3,10 +3,6 @@ import { motion } from 'motion/react';
 import { Shield, ArrowRight, Zap, Users, Activity } from 'lucide-react';
 import { Card } from '../ui/card';
 
-type Props = {
-  setCurrentPage: (page: 'home' | 'navigation' | 'gesture' | 'emergency' | 'dashboard' | 'ai') => void;
-};
-
 type Page = 'home' | 'navigation' | 'emergency' | 'dashboard' | 'mesh';
 
 interface HomePageProps {
@@ -31,20 +27,14 @@ export function HomePage({ onNavigate, onOpenAssistant }: HomePageProps) {
     { label: 'Users Protected', value: '1.2K+', icon: Users, color: 'text-blue-500' },
     { label: 'Success Rate', value: '99.8%', icon: Activity, color: 'text-green-500' },
   ];
-  
+
   const features: Feature[] = [
     {
       title: 'Smart Navigation',
-      description: 'Real-time pathfinding to the nearest safe exit',
+      description: '2D + AR pathfinding with gesture SOS',
       icon: '🗺️',
       gradient: 'from-blue-500 to-cyan-500',
-      target: 'navigation'
-    },
-    {
-      title: 'Gesture Control',
-      description: 'Hands-free control using AI hand tracking',
-      icon: '👋',
-      gradient: 'from-purple-500 to-pink-500',
+      target: 'navigation',
     },
     {
       title: 'Mesh Network',
@@ -151,18 +141,6 @@ export function HomePage({ onNavigate, onOpenAssistant }: HomePageProps) {
             </motion.div>
           ))}
         </div>
-        
-        {/* Emergency Button */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.7 }}
-          className="mt-8"
-        >
-          <button className="w-full py-4 bg-gradient-to-r from-red-500 to-red-600 text-white font-bold rounded-2xl shadow-lg active:scale-95 transition-transform">
-            🚨 Start Emergency Mode
-          </button>
-        </motion.div>
       </div>
     </div>
   );

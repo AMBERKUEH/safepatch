@@ -77,9 +77,9 @@ function App() {
 
       {/* Floating AI Assistant */}
       <FloatingAIAssistant
-        // isOpen={isAssistantOpen}
-        // onOpen={() => setIsAssistantOpen(true)}
-        // onClose={() => setIsAssistantOpen(false)}
+        isOpen={isAssistantOpen}
+        onOpen={() => setIsAssistantOpen(true)}
+        onClose={() => setIsAssistantOpen(false)}
       />
 
       {/* Bottom Navigation */}

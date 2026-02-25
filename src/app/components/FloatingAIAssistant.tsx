@@ -20,8 +20,25 @@ declare global {
   }
 }
 
-export function FloatingAIAssistant() {
-  const [isOpen, setIsOpen] = useState(false);
+interface FloatingAIAssistantProps {
+  isOpen?: boolean;
+  onOpen?: () => void;
+  onClose?: () => void;
+}
+
+export function FloatingAIAssistant({ isOpen, onOpen, onClose }: FloatingAIAssistantProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isOpen ?? internalOpen;
+  const setOpen = (value: boolean) => {
+    if (value) {
+      onOpen?.();
+    } else {
+      onClose?.();
+    }
+    if (isOpen === undefined) {
+      setInternalOpen(value);
+    }
+  };
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -159,14 +176,14 @@ export function FloatingAIAssistant() {
     <>
       {/* Floating Button */}
       <AnimatePresence>
-        {!isOpen && (
+        {!open && (
           <motion.button
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => setIsOpen(true)}
+            onClick={() => setOpen(true)}
             className="fixed bottom-24 right-6 w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full shadow-2xl flex items-center justify-center z-50"
           >
             <Bot className="w-7 h-7 text-white" />
@@ -181,7 +198,7 @@ export function FloatingAIAssistant() {
 
       {/* Chat Window */}
       <AnimatePresence>
-        {isOpen && (
+        {open && (
           <motion.div
             initial={{ opacity: 0, y: 100, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -200,7 +217,7 @@ export function FloatingAIAssistant() {
                 </div>
 
                 <div className="flex gap-1">
-                  <Button
+                    <Button
                     onClick={() => setVoiceEnabled(!voiceEnabled)}
                     variant="ghost"
                     size="sm"
@@ -209,7 +226,7 @@ export function FloatingAIAssistant() {
                     {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                   </Button>
                   <Button
-                    onClick={() => setIsOpen(false)}
+                    onClick={() => setOpen(false)}
                     variant="ghost"
                     size="sm"
                     className="text-white hover:bg-white/20 h-8 w-8 p-0"
