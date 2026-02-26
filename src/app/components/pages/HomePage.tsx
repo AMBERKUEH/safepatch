@@ -22,7 +22,7 @@ interface Feature {
 }
 
 export function HomePage({ onNavigate, onOpenAssistant }: HomePageProps) {
- 
+
   const features: Feature[] = [
     {
       title: 'Smart Navigation',
@@ -82,7 +82,7 @@ export function HomePage({ onNavigate, onOpenAssistant }: HomePageProps) {
       </div>
 
       {/* Features Section */}
-      <div className="bg-white rounded-t-3xl px-6 pt-8 pb-24 min-h-[50vh]">
+      <div className="bg-white rounded-t-3xl px-6 pt-8 pb-32 min-h-[50vh]">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Features</h2>
           <span className="text-sm text-gray-500">Tap to explore</span>

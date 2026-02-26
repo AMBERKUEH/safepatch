@@ -212,7 +212,7 @@ export function NavigationPage() {
       </div>
 
       {/* Main Content */}
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 pb-28">
         {/* Mode indicator: Mapped vs Vision */}
         <ModeIndicator mode={navMode} onToggle={() => setNavMode((m) => (m === 'MAPPED' ? 'VISION' : 'MAPPED'))} />
 

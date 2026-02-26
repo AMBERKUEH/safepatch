@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 
 // Your web app's Firebase configuration
@@ -15,7 +15,14 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
+let analytics: ReturnType<typeof getAnalytics> | null = null;
+try {
+    if (typeof window !== 'undefined') {
+        analytics = getAnalytics(app);
+    }
+} catch (e) {
+    console.warn("⚠️ Firebase Analytics not available:", e);
+}
 export const db = getFirestore(app);
 
 /**
@@ -37,6 +44,43 @@ export async function logSOSEvent(data: {
     } catch (e) {
         console.error("❌ Error adding SOS event to Firebase: ", e);
         return null;
+    }
+}
+
+/**
+ * Test Firebase connection by writing and reading a test document
+ */
+export async function testFirebaseConnection(): Promise<boolean> {
+    try {
+        // Write a test document
+        const docRef = await addDoc(collection(db, "connection_tests"), {
+            test: true,
+            timestamp: serverTimestamp(),
+            source: 'safepath_connection_check'
+        });
+        console.log("✅ Firebase write test passed, doc ID:", docRef.id);
+
+        // Read back from the collection
+        const q = query(collection(db, "emergency_events"), orderBy("timestamp", "desc"), limit(1));
+        await getDocs(q);
+        console.log("✅ Firebase read test passed");
+
+        return true;
+    } catch (e) {
+        console.error("❌ Firebase connection test failed:", e);
+        return false;
+    }
+}
+
+/**
+ * Check Firebase connection status
+ */
+export async function checkFirebaseStatus(): Promise<'connected' | 'error'> {
+    try {
+        const ok = await testFirebaseConnection();
+        return ok ? 'connected' : 'error';
+    } catch {
+        return 'error';
     }
 }
 

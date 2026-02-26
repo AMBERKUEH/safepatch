@@ -12,7 +12,6 @@ import { logSOSEvent } from '../../services/firebase';
 
 export function GesturePage() {
   const [gestureEnabled, setGestureEnabled] = useState(false);
-  const [showEmergencyOverlay, setShowEmergencyOverlay] = useState(false);
   const [flashVisible, setFlashVisible] = useState(false);
   const { sendSOS } = useSocket();
 
@@ -26,9 +25,10 @@ export function GesturePage() {
       if (count >= 6) clearInterval(flashInterval);
     }, 250);
     setTimeout(() => setFlashVisible(false), 1600);
+    setTimeout(() => setFlashVisible(false), 1600);
     sendSOS();
     startSOSVibrationLoop();
-    setShowEmergencyOverlay(true);
+
 
     // Real Firebase Logging
     logSOSEvent({
@@ -40,7 +40,6 @@ export function GesturePage() {
 
   const handleDismissEmergency = useCallback(() => {
     stopSOSVibrationLoop();
-    setShowEmergencyOverlay(false);
   }, []);
 
   const handleGesture = useCallback(
@@ -74,15 +73,7 @@ export function GesturePage() {
         )}
       </AnimatePresence>
 
-      {/* Emergency confirmation overlay */}
-      <AnimatePresence>
-        {showEmergencyOverlay && (
-          <EmergencyOverlay
-            onDismiss={handleDismissEmergency}
-            onCall911={() => window.open('tel:911')}
-          />
-        )}
-      </AnimatePresence>
+      {/* Emergency confirmation overlay removed here - GestureControl handles its own Call 911 UI */}
 
       {/* Header */}
       <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-8 text-white">

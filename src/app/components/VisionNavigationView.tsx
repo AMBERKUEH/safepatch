@@ -78,6 +78,7 @@ export function VisionNavigationView({
     confirmProgress,
     confidence,
     isReady: isGestureReady,
+    lastError: gestureError,
     canvasRef: gestureCanvasRef,
     startDetectionOn,
     stopDetection,
@@ -373,9 +374,25 @@ export function VisionNavigationView({
               >
                 Reset Camera
               </Button>
-              <Badge variant="secondary" className="bg-black/40 text-white/70 border-white/10 text-[10px]">
-                Vision Engine: {isGestureReady ? 'Active' : 'Initializing...'}
+              <Badge variant="secondary" className={`text-[10px] ${gestureError ? 'bg-red-500/80 text-white' : 'bg-black/40 text-white/70'} border-white/10`}>
+                Vision Engine: {gestureError ? 'Error (Details below)' : isGestureReady ? 'Active' : 'Initializing...'}
               </Badge>
+            </div>
+          )}
+
+          {/* MediaPipe Error Inline Overlay */}
+          {cameraActive && gestureError && (
+            <div className="absolute top-20 left-4 right-4 z-30 bg-red-900/90 border border-red-500/50 backdrop-blur-md rounded-xl p-4 text-white">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                <div>
+                  <p className="font-bold text-sm">MediaPipe Recognition Refused</p>
+                  <p className="text-xs text-red-200 mt-1">{gestureError}</p>
+                  <p className="text-[10px] text-red-300/80 mt-2 italic">
+                    Note: Camera/WASM requires a Secure Context (HTTPS or localhost).
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 

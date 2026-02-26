@@ -11,6 +11,7 @@ interface MeshNetworkPageProps {
     lastSOS: MeshMessage | null;
     lastAckedMsgId: string | null;
     isActive: boolean;
+    isDemoMode?: boolean;
     onSendSOS: () => void;
     onRelayHazard: () => void;
 }
@@ -20,6 +21,7 @@ export function MeshNetworkPage({
     lastSOS,
     lastAckedMsgId,
     isActive,
+    isDemoMode = false,
     onSendSOS,
     onRelayHazard,
 }: MeshNetworkPageProps) {
@@ -38,7 +40,7 @@ export function MeshNetworkPage({
                 </div>
             </div>
 
-            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+            <div className="p-6 space-y-6 flex-1 overflow-y-auto pb-28">
                 {/* Connection Status Card */}
                 <Card className="p-5 border-none shadow-md overflow-hidden relative">
                     <div className={`absolute top-0 right-0 p-4 ${isActive ? 'text-green-500' : 'text-slate-400'}`}>
@@ -62,6 +64,11 @@ export function MeshNetworkPage({
                         <Badge variant={isActive ? 'default' : 'secondary'} className={isActive ? 'bg-green-600' : ''}>
                             {isActive ? 'Engine Active' : 'Offline'}
                         </Badge>
+                        {isDemoMode && (
+                            <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">
+                                Demo Mode
+                            </Badge>
+                        )}
                         {peerCount > 0 && (
                             <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">
                                 P2P Ready

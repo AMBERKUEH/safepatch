@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Hand, ThumbsUp, Square, Hand as OpenPalm, AlertTriangle, CheckCircle, Keyboard, Volume2 } from 'lucide-react';
+import { Hand, ThumbsUp, Square, Hand as OpenPalm, AlertTriangle, CheckCircle, Keyboard, Volume2, Phone } from 'lucide-react';
 import { useGestureRecognition, GestureType } from '../hooks/useGestureRecognition';
 import { useSocket } from '../hooks/useSocket';
 import { Button } from './ui/button';
@@ -31,6 +31,7 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
     isActive,
     confidence,
     confirmProgress,
+    lastError,
     videoRef,
     canvasRef,
     startCamera,
@@ -40,7 +41,7 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
 
   const { sendSOS, sendSafe } = useSocket();
   const [sosActive, setSosActive] = useState(false);
-  const [showSOSOverlay, setShowSOSOverlay] = useState(false);
+  const [show911Page, setShow911Page] = useState(false);
   const [gestureFlash, setGestureFlash] = useState(false);
 
   // Register gesture confirmed callback
@@ -51,7 +52,7 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
       setTimeout(() => setGestureFlash(false), 800);
 
       if (gesture === 'closed_fist') {
-        // SOS triggered!
+        // Fist detected → show Call 911 page!
         triggerSOS();
       } else if (gesture === 'thumbs_up' && sosActive) {
         // Cancel SOS
@@ -62,7 +63,7 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
 
   const triggerSOS = useCallback(() => {
     setSosActive(true);
-    setShowSOSOverlay(true);
+    setShow911Page(true);
     sendSOS();
     playEmergencyAlarm(3000);
     startSOSVibrationLoop();
@@ -77,7 +78,7 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
 
   const cancelSOS = useCallback(() => {
     setSosActive(false);
-    setShowSOSOverlay(false);
+    setShow911Page(false);
     sendSafe();
     stopSOSVibrationLoop();
   }, [sendSafe]);
@@ -133,64 +134,83 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
 
   return (
     <>
-      {/* SOS Full-Screen Overlay */}
+      {/* ═══ CALL 911 EMERGENCY PAGE ═══ */}
       <AnimatePresence>
-        {showSOSOverlay && (
+        {show911Page && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-            style={{ background: 'rgba(220, 38, 38, 0.95)' }}
+            style={{ background: 'rgba(185, 28, 28, 0.97)' }}
           >
+            {/* Pulsing border */}
+            <motion.div
+              animate={{ opacity: [0.3, 0.9, 0.3] }}
+              transition={{ duration: 1.2, repeat: Infinity }}
+              className="absolute inset-0 border-[8px] border-white pointer-events-none"
+            />
+
+            {/* Main content */}
             <motion.div
               animate={{
-                scale: [1, 1.1, 1],
-                opacity: [1, 0.8, 1],
+                scale: [1, 1.05, 1],
               }}
-              transition={{ duration: 1, repeat: Infinity }}
-              className="text-center text-white"
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="text-center text-white mb-6"
             >
-              <div className="text-8xl mb-6">🆘</div>
-              <h1 className="text-4xl font-bold mb-2">SOS SENT</h1>
-              <p className="text-xl opacity-90 mb-2">Emergency signal broadcast</p>
-              <p className="text-sm opacity-70">Help is being notified</p>
+              <div className="text-8xl mb-4">🚨</div>
+              <h1 className="text-5xl font-extrabold mb-2 tracking-tight">CALL 911</h1>
+              <p className="text-xl opacity-90">Emergency fist gesture detected</p>
             </motion.div>
 
+            {/* Call 911 button */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1 }}
-              className="mt-8 text-center text-white"
+              transition={{ delay: 0.3 }}
+              className="flex flex-col items-center gap-4"
             >
-              <p className="text-sm mb-4">👍 Show thumbs up or press T to cancel</p>
+              <Button
+                onClick={() => window.open('tel:911')}
+                className="bg-white text-red-700 hover:bg-red-50 text-2xl font-bold px-12 py-6 rounded-2xl shadow-2xl flex items-center gap-3 border-none h-auto"
+              >
+                <Phone className="w-8 h-8" />
+                Call 911 Now
+              </Button>
+
+              <div className="text-white/80 text-sm max-w-xs text-center space-y-2 mt-4">
+                <p>📍 Your location is being shared with emergency contacts</p>
+                <p>🆘 SOS signal has been broadcast via mesh network</p>
+                <p className="mt-4 font-semibold text-white/90">👍 Show thumbs up or press T to cancel</p>
+              </div>
+
               <Button
                 onClick={cancelSOS}
                 variant="outline"
-                className="bg-white/20 border-white text-white hover:bg-white/30"
+                className="mt-4 bg-white/10 border-white/40 text-white hover:bg-white/20"
               >
-                Cancel SOS
-              </Button>
-              <Button
-                onClick={() => window.open('tel:911')}
-                className="bg-red-700 hover:bg-red-800 text-white border-none"
-              >
-                Call 911 Now
+                Cancel Emergency
               </Button>
             </motion.div>
-
-            {/* Pulsing border */}
-            <motion.div
-              animate={{ opacity: [0.3, 0.8, 0.3] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              className="absolute inset-0 border-[8px] border-white pointer-events-none"
-            />
           </motion.div>
         )}
       </AnimatePresence>
 
       <Card className="p-4 bg-white">
         <div className="space-y-4">
+          {/* MediaPipe Error Banner */}
+          {lastError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-red-800">MediaPipe Error</p>
+                <p className="text-xs text-red-600">{lastError}</p>
+                <p className="text-xs text-red-500 mt-1">Use keyboard shortcuts below as fallback.</p>
+              </div>
+            </div>
+          )}
+
           {/* Video and Canvas */}
           {isEnabled ? (
             <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '4/3' }}>
@@ -274,7 +294,7 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
               transition={{ duration: 1, repeat: Infinity }}
               className="bg-red-500 text-white p-3 rounded-xl text-center"
             >
-              <p className="font-bold">🆘 SOS ACTIVE</p>
+              <p className="font-bold">🚨 EMERGENCY ACTIVE — CALL 911</p>
               <p className="text-xs">Thumbs up or press T to cancel</p>
             </motion.div>
           )}
@@ -288,7 +308,7 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
             <div className="grid grid-cols-2 gap-2 text-xs text-blue-800">
               <div>👍 <kbd className="bg-blue-200 px-1 rounded">T</kbd> Confirm</div>
               <div>✋ <kbd className="bg-blue-200 px-1 rounded">P</kbd> Repeat</div>
-              <div>✊ <kbd className="bg-blue-200 px-1 rounded">S</kbd> SOS</div>
+              <div>✊ <kbd className="bg-blue-200 px-1 rounded">S</kbd> <span className="text-red-600 font-bold">Call 911</span></div>
               <div>☝️ <kbd className="bg-blue-200 px-1 rounded">N</kbd> Next Step</div>
               <div>✌️ <kbd className="bg-blue-200 px-1 rounded">V</kbd> All Clear</div>
             </div>
@@ -298,3 +318,4 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
     </>
   );
 }
+

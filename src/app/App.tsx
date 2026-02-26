@@ -24,6 +24,7 @@ function App() {
     lastSOS,
     lastAckedMsgId,
     isActive: meshActive,
+    isDemoMode: meshDemoMode,
     sendSOS: meshSendSOS,
     relayHazard,
     relayLocation,
@@ -63,6 +64,7 @@ function App() {
                 lastSOS={lastSOS}
                 lastAckedMsgId={lastAckedMsgId}
                 isActive={meshActive}
+                isDemoMode={meshDemoMode}
                 onSendSOS={() => meshSendSOS(0, 0)} // Placeholder coords, user can trigger real SOS on navigation page
                 onRelayHazard={() => relayHazard(JSON.stringify({ type: 'test', value: 1 }))}
               />

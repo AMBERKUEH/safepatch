@@ -27,8 +27,15 @@ export default defineConfig({
       '/socket.io': { target: 'http://localhost:3001', ws: true },
     },
     headers: {
-    'Content-Security-Policy':
-      "connect-src 'self' http://localhost:3001 https://generativelanguage.googleapis.com"
+      'Content-Security-Policy': [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net",
+        "worker-src 'self' blob: https://cdn.jsdelivr.net",
+        "connect-src 'self' http://localhost:3001 https://generativelanguage.googleapis.com https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com wss://*.firebaseio.com https://cdn.jsdelivr.net https://storage.googleapis.com",
+        "img-src 'self' data: blob: https://*.googleapis.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com"
+      ].join('; ')
     }
   },
 })
