@@ -1,6 +1,6 @@
 // ai.js
 import { Router } from 'express';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -171,16 +171,21 @@ LANGUAGE & TONE
 - Mirror the user's urgency level — if they're panicking, be extra calm and structured
   `;
 
-// =================== GEMINI INIT ===================
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // =================== AI RESPONSE FUNCTION ===================
 async function getAIResponse(userMessage, context = {}) {
-  try {
-    const history = context.history || [];
+  const history = context.history || [];
 
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_API_KEY_HERE' || process.env.GEMINI_API_KEY.includes('YOUR_')) {
+    console.warn('GEMINI_API_KEY not found or placeholder. Using high-quality structured fallback for demo.');
+    const fallback = getFallbackResponse(userMessage, context, true); // true for structured
+    history.push({ role: 'user', content: userMessage });
+    history.push({ role: 'ai', content: fallback });
+    return { text: fallback, history };
+  }
+
+  try {
     // Add current user message to history
     history.push({ role: 'user', content: userMessage });
 
@@ -197,17 +202,15 @@ Respond as SafePath AI:
 `;
 
     // Call Gemini
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-
-    const text = response.text?.trim();
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
 
     if (text && text.length > 0) {
       // Save AI response into history
       history.push({ role: 'ai', content: text });
-      return { text, history };
+      return { text: text, history };
     }
   } catch (e) {
     console.warn('Gemini request failed:', e.message);
@@ -220,9 +223,60 @@ Respond as SafePath AI:
 }
 
 // =================== FALLBACK RESPONSES ===================
-function getFallbackResponse(input, context) {
+function getFallbackResponse(input, context, useStructured = false) {
   const text = (input || '').toLowerCase();
-  const distance = context.distanceToExit ?? 0;
+  const distance = context.distanceToExit ?? 15;
+
+  if (useStructured) {
+    if (text.includes('smoke') || text.includes('fire')) {
+      return `[SITUATION ASSESSMENT]
+You are reporting smoke or fire in the building. This is a life-threatening emergency.
+
+[IMMEDIATE ACTIONS — Do these RIGHT NOW]
+1. STAY LOW to the ground where the air is clearer.
+2. EVACUATE immediately toward the nearest exit.
+3. DO NOT use elevators.
+4. CALL 911 when you reach a safe location.
+
+[NEXT STEPS — Do these after immediate actions]
+1. Follow the blue path on your navigation screen.
+2. Assist others if it does not delay your evacuation.
+3. Close doors behind you to slow the spread of fire.
+
+[WATCH OUT FOR]
+- Hot door handles (feel with back of hand).
+- Thick smoke blocking visibility.
+- Falling debris.
+
+[IF SITUATION CHANGES]
+- If trapped, seal door gaps with cloth and signal from a window.
+- If your clothes catch fire: STOP, DROP, and ROLL.
+
+Tell me what's happening now so I can update your guidance.`;
+    }
+
+    // Default structured fallback
+    return `[SITUATION ASSESSMENT]
+You are requesting guidance during an emergency situation.
+
+[IMMEDIATE ACTIONS — Do these RIGHT NOW]
+1. Locate the nearest emergency exit.
+2. Follow the blue navigation path on your screen.
+3. Stay calm and alert to your surroundings.
+
+[NEXT STEPS — Do these after immediate actions]
+1. Inform others of the situation.
+2. Move steadily toward safety.
+
+[WATCH OUT FOR]
+- Potential hazards on your route.
+- Changing conditions.
+
+[IF SITUATION CHANGES]
+- Call 911 immediately if you are in direct danger.
+
+Tell me what's happening now so I can update your guidance.`;
+  }
 
   if (/scared|afraid|panic/.test(text))
     return "It's okay to feel scared. Take a deep breath. I'm here with you. Follow the path on your screen.";

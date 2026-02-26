@@ -8,6 +8,7 @@ import type { GestureType } from '../../hooks/useGestureRecognition';
 import { useSocket } from '../../hooks/useSocket';
 import { playEmergencyAlarm } from '../../utils/emergencySound';
 import { sosVibrationPattern, startSOSVibrationLoop, stopSOSVibrationLoop } from '../../utils/hapticFeedback';
+import { logSOSEvent } from '../../services/firebase';
 
 export function GesturePage() {
   const [gestureEnabled, setGestureEnabled] = useState(false);
@@ -28,6 +29,13 @@ export function GesturePage() {
     sendSOS();
     startSOSVibrationLoop();
     setShowEmergencyOverlay(true);
+
+    // Real Firebase Logging
+    logSOSEvent({
+      userId: 'user_' + Math.random().toString(36).substr(2, 9),
+      type: 'GESTURE_SOS',
+      status: 'active'
+    });
   }, [sendSOS]);
 
   const handleDismissEmergency = useCallback(() => {

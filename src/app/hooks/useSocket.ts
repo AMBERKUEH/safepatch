@@ -30,7 +30,7 @@ export function useSocket() {
   const [buildingArea, setBuildingArea] = useState({ width: 600, height: 400 });
 
   useEffect(() => {
-    const url = SOCKET_URL || (window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin);
+    const url = SOCKET_URL || (['5173', '5174'].includes(window.location.port) ? 'http://localhost:3001' : window.location.origin);
     const s = io(url, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     s.on('connect', () => setConnected(true));

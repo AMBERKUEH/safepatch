@@ -10,6 +10,7 @@ import { useSocket } from '../hooks/useSocket';
 import { findGraphPath } from '../utils/pathfinding';
 import { playEmergencyAlarm } from '../utils/emergencySound';
 import { startSOSVibrationLoop, stopSOSVibrationLoop } from '../utils/hapticFeedback';
+import { logSOSEvent } from '../services/firebase';
 
 // --- API Types ---
 interface FloorNode {
@@ -76,6 +77,7 @@ export function VisionNavigationView({
     currentGesture,
     confirmProgress,
     confidence,
+    isReady: isGestureReady,
     canvasRef: gestureCanvasRef,
     startDetectionOn,
     stopDetection,
@@ -98,6 +100,15 @@ export function VisionNavigationView({
         ts: Date.now()
       });
     }
+
+    // Real Firebase Logging
+    logSOSEvent({
+      userId: socket?.id || 'unknown',
+      type: 'VISION_GESTURE_SOS',
+      location: { x: userPos.x, y: userPos.y },
+      status: 'active'
+    });
+
     speak({ text: "Emergency SOS triggered. 911 dispatch notified." });
   }, [socket, userPos, speak]);
 
@@ -257,6 +268,7 @@ export function VisionNavigationView({
       const s = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: 640, height: 480 },
       });
+      console.log('Camera started:', s.getVideoTracks()[0].getSettings());
       setStream(s);
       setCameraActive(true);
     } catch (err) {
@@ -349,6 +361,23 @@ export function VisionNavigationView({
             width={640} height={480}
             className="absolute inset-0 w-full h-full pointer-events-none opacity-40"
           />
+
+          {cameraActive && (
+            <div className="absolute top-4 right-4 flex flex-col gap-2 z-20 pointer-events-auto">
+              <Button
+                onClick={async () => {
+                  stopCamera();
+                  await startCamera();
+                }}
+                className="bg-white/20 backdrop-blur-md border border-white/30 text-white text-[10px] h-8"
+              >
+                Reset Camera
+              </Button>
+              <Badge variant="secondary" className="bg-black/40 text-white/70 border-white/10 text-[10px]">
+                Vision Engine: {isGestureReady ? 'Active' : 'Initializing...'}
+              </Badge>
+            </div>
+          )}
 
           {/* HUD Overlay */}
           <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent flex justify-between items-start pointer-events-none">

@@ -58,9 +58,10 @@ export function useGestureRecognition() {
         if (mounted) {
           recognizerRef.current = gestureRecognizer;
           setIsReady(true);
+          console.log('✅ MediaPipe Gesture Recognizer loaded successfully');
         }
       } catch (error) {
-        console.error('Failed to initialize gesture recognizer:', error);
+        console.error('❌ Failed to initialize gesture recognizer:', error);
       }
     }
     init();
@@ -82,6 +83,9 @@ export function useGestureRecognition() {
 
     const detect = () => {
       if (!recognizerRef.current || !video || video.readyState < 2) {
+        if (video && video.readyState < 2) {
+          console.warn('Waiting for video readyState...', video.readyState);
+        }
         animationFrameRef.current = requestAnimationFrame(detect);
         return;
       }

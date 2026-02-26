@@ -7,6 +7,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { playEmergencyAlarm } from '../utils/emergencySound';
 import { startSOSVibrationLoop, stopSOSVibrationLoop } from '../utils/hapticFeedback';
+import { logSOSEvent } from '../services/firebase';
 
 interface GestureControlProps {
   onGesture: (gesture: GestureType) => void;
@@ -65,6 +66,13 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
     sendSOS();
     playEmergencyAlarm(3000);
     startSOSVibrationLoop();
+
+    // Real Firebase Logging
+    logSOSEvent({
+      userId: 'user_' + Math.random().toString(36).substr(2, 9),
+      type: 'GESTURE_SOS',
+      status: 'active'
+    });
   }, [sendSOS]);
 
   const cancelSOS = useCallback(() => {
@@ -163,6 +171,12 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
               >
                 Cancel SOS
               </Button>
+              <Button
+                onClick={() => window.open('tel:911')}
+                className="bg-red-700 hover:bg-red-800 text-white border-none"
+              >
+                Call 911 Now
+              </Button>
             </motion.div>
 
             {/* Pulsing border */}
@@ -234,10 +248,10 @@ export function GestureControl({ onGesture, isEnabled, onToggle }: GestureContro
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-lg ${currentGesture === 'closed_fist'
-                  ? 'bg-red-100'
-                  : currentGesture !== 'none'
-                    ? 'bg-green-100'
-                    : 'bg-gray-100'
+                ? 'bg-red-100'
+                : currentGesture !== 'none'
+                  ? 'bg-green-100'
+                  : 'bg-gray-100'
                 }`}>
                 <Icon className={`w-6 h-6 ${currentIcon.color}`} />
               </div>
