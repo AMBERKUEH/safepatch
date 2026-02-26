@@ -1,3 +1,4 @@
+// ai.js
 import { Router } from 'express';
 import { GoogleGenAI } from "@google/genai";
 import dotenv from 'dotenv';
@@ -5,6 +6,7 @@ dotenv.config();
 
 export const aiRouter = Router();
 
+// =================== SYSTEM PROMPT ===================
 const SYSTEM_PROMPT = `
 You are AI safety companion for SafePath AI — an emergency evacuation and crisis response system.
 
@@ -169,20 +171,21 @@ LANGUAGE & TONE
 - Mirror the user's urgency level — if they're panicking, be extra calm and structured
   `;
 
-// Initialize Gemini (only if key exists)
+// =================== GEMINI INIT ===================
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
+// =================== AI RESPONSE FUNCTION ===================
 async function getAIResponse(userMessage, context = {}) {
   try {
-    const distance = context.distanceToExit || 0;
-    const emergencyLevel = context.emergencyLevel || 'safe';
     const history = context.history || [];
 
-    const historyText = history
-      .map(h => `${h.role}: ${h.content}`)
-      .join('\n');
+    // Add current user message to history
+    history.push({ role: 'user', content: userMessage });
+
+    // Convert history into text
+    const historyText = history.map(h => `${h.role}: ${h.content}`).join('\n');
 
     const prompt = `
 ${SYSTEM_PROMPT}
@@ -190,29 +193,33 @@ ${SYSTEM_PROMPT}
 Previous conversation:
 ${historyText}
 
-User: ${userMessage}
-
 Respond as SafePath AI:
 `;
 
+    // Call Gemini
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", // ✅ valid modern model
-      contents: prompt, // ✅ correct for @google/genai
+      model: "gemini-3-flash-preview",
+      contents: prompt,
     });
 
-    const text = response.text; // ⭐ MOST IMPORTANT FIX
+    const text = response.text?.trim();
 
-    if (text && text.trim().length > 0) {
-      return text.trim();
+    if (text && text.length > 0) {
+      // Save AI response into history
+      history.push({ role: 'ai', content: text });
+      return { text, history };
     }
-
   } catch (e) {
     console.warn('Gemini request failed:', e.message);
   }
 
-  return getFallbackResponse(userMessage, context);
+  // Fallback if Gemini fails
+  const fallback = getFallbackResponse(userMessage, context);
+  history.push({ role: 'ai', content: fallback });
+  return { text: fallback, history };
 }
 
+// =================== FALLBACK RESPONSES ===================
 function getFallbackResponse(input, context) {
   const text = (input || '').toLowerCase();
   const distance = context.distanceToExit ?? 0;
@@ -238,29 +245,31 @@ function getFallbackResponse(input, context) {
   return "Stay calm and follow the blue path. I'm monitoring the situation and will update you if anything changes.";
 }
 
+// =================== API ROUTES ===================
+
+// Chat endpoint
 aiRouter.post('/chat', async (req, res) => {
   try {
-    const { message, history, emergencyLevel } = req.body || {};
+    const { message, history = [], emergencyLevel, distanceToExit } = req.body;
 
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'message is required' });
     }
 
-    // Pass more context to your AI response function
-    const reply = await getAIResponse(message, { 
-      distanceToExit: req.body.distanceToExit,
+    const { text: reply, history: updatedHistory } = await getAIResponse(message, {
+      history,
       emergencyLevel,
-      history 
+      distanceToExit,
     });
 
-    res.json({ reply });
+    res.json({ reply, history: updatedHistory });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'AI request failed' });
   }
 });
 
-// Add a test route to verify the router is working
+// Test endpoint
 aiRouter.get('/test', (req, res) => {
   res.json({ message: 'AI router is working!' });
 });
