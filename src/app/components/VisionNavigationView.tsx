@@ -280,9 +280,11 @@ export function VisionNavigationView({
   useEffect(() => {
     if (cameraActive && stream && videoRef.current) {
       videoRef.current.srcObject = stream;
-      videoRef.current.play().then(() => {
-        startDetectionOn(videoRef.current!);
-      }).catch(err => console.error("Video play failed:", err));
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current?.play().then(() => {
+          startDetectionOn(videoRef.current!);
+        }).catch(err => console.error("Video play failed:", err));
+      };
     }
   }, [cameraActive, stream, startDetectionOn]);
 

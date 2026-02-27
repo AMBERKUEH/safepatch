@@ -62,7 +62,7 @@ export function useGestureRecognition() {
       }
 
       try {
-        console.log('[MediaPipe] Loading WASM fileset from jsdelivr...');
+        console.log('[MediaPipe] Loading WASM fileset from jsdelivr (0.10.32)...');
         const vision = await FilesetResolver.forVisionTasks(
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm'
         );
@@ -100,6 +100,8 @@ export function useGestureRecognition() {
           msg = error.message;
         } else if (typeof error === 'string') {
           msg = error;
+        } else if (error && typeof error === 'object' && ('isTrusted' in error || 'type' in error)) {
+          msg = 'Security/Network Error: MediaPipe was blocked or failed to fetch. check browser console (F12) for CSP violations.';
         } else {
           try {
             msg = JSON.stringify(error);
@@ -112,9 +114,21 @@ export function useGestureRecognition() {
         if (mounted) setLastError(msg);
       }
     }
+
+    // Diagnostic listener for CSP violations
+    const handleCSPViolation = (e: any) => {
+      console.error('[MediaPipe] 🛡️ CSP Violation detected:', e.blockedURI, e.violatedDirective);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('securitypolicyviolation', handleCSPViolation);
+    }
+
     init();
     return () => {
       mounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('securitypolicyviolation', handleCSPViolation);
+      }
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, []);
@@ -160,8 +174,13 @@ export function useGestureRecognition() {
         // Draw hand landmarks on canvas overlay
         if (canvas) {
           // Match canvas size to video display size
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          } else {
+            canvas.width = 640;
+            canvas.height = 480;
+          }
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -188,7 +207,7 @@ export function useGestureRecognition() {
           const detected = results.gestures[0][0];
           const gestureName = gestureCommands[detected.categoryName] || 'none';
 
-          if (detected.score > 0.7 && gestureName !== 'none') {
+          if (detected.score > 0.5 && gestureName !== 'none') {
             setCurrentGesture(gestureName);
             setConfidence(detected.score);
 
@@ -266,26 +285,29 @@ export function useGestureRecognition() {
       streamRef.current = stream;
       console.log('[MediaPipe] 📷 Camera stream obtained ✅');
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        console.log('[MediaPipe] 📷 Video playing, readyState:', videoRef.current.readyState);
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          console.log('[MediaPipe] 📷 Video metadata loaded, size:', video.videoWidth, 'x', video.videoHeight);
+          video.play().then(() => {
+            console.log('[MediaPipe] 📷 Video playing, readyState:', video.readyState);
 
-        // Wait for model to be ready before starting the detection loop
-        if (!recognizerRef.current) {
-          console.log('[MediaPipe] ⏳ Waiting for model to finish loading before detection...');
-          const waitForModel = setInterval(() => {
-            if (recognizerRef.current) {
-              clearInterval(waitForModel);
-              console.log('[MediaPipe] Model loaded! Starting detection loop.');
-              if (videoRef.current) {
-                runDetectionLoop(videoRef.current);
-              }
+            // Wait for model to be ready before starting the detection loop
+            if (!recognizerRef.current) {
+              console.log('[MediaPipe] ⏳ Waiting for model to finish loading before detection...');
+              const waitForModel = setInterval(() => {
+                if (recognizerRef.current) {
+                  clearInterval(waitForModel);
+                  console.log('[MediaPipe] Model loaded! Starting detection loop.');
+                  runDetectionLoop(video);
+                }
+              }, 300);
+            } else {
+              runDetectionLoop(video);
             }
-          }, 300);
-        } else {
-          runDetectionLoop(videoRef.current);
-        }
+          });
+        };
       } else {
         console.error('[MediaPipe] ❌ videoRef.current is null — video element not mounted yet');
         setLastError('Video element not ready. Try toggling the camera off and on.');
