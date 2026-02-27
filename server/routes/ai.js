@@ -222,14 +222,14 @@ Respond as SafePath AI:
   return { text: fallback, history };
 }
 
-// =================== FALLBACK RESPONSES ===================
-function getFallbackResponse(input, context, useStructured = false) {
-  const text = (input || '').toLowerCase();
-  const distance = context.distanceToExit ?? 15;
+ =================== FALLBACK RESPONSES ===================
+nction getFallbackResponse(input, context, useStructured = false) {
+  nst text = (input || '').toLowerCase();
+  nst distance = context.distanceToExit ?? 15;
 
-  if (useStructured) {
-    if (text.includes('smoke') || text.includes('fire')) {
-      return `[SITUATION ASSESSMENT]
+  (useStructured) {
+    (text.includes('smoke') || text.includes('fire')) {
+      turn`[SITUATION ASSESSMENT]
 You are reporting smoke or fire in the building. This is a life-threatening emergency.
 
 [IMMEDIATE ACTIONS — Do these RIGHT NOW]
@@ -253,10 +253,10 @@ You are reporting smoke or fire in the building. This is a life-threatening emer
 - If your clothes catch fire: STOP, DROP, and ROLL.
 
 Tell me what's happening now so I can update your guidance.`;
-    }
+    
 
-    // Default structured fallback
-    return `[SITUATION ASSESSMENT]
+     Default structured fallback
+      turn`[SITUATION ASSESSMENT]
 You are requesting guidance during an emergency situation.
 
 [IMMEDIATE ACTIONS — Do these RIGHT NOW]
@@ -276,54 +276,54 @@ You are requesting guidance during an emergency situation.
 - Call 911 immediately if you are in direct danger.
 
 Tell me what's happening now so I can update your guidance.`;
-  }
 
-  if (/scared|afraid|panic/.test(text))
-    return "It's okay to feel scared. Take a deep breath. I'm here with you. Follow the path on your screen.";
 
-  if (/smoke|can't see/.test(text))
-    return 'Stay low where the air is clearer. Cover your nose with cloth if possible. Keep following the blue path.';
+      (/scared|afraid|panic/.test(text))
+    turn "It's okay to feel scared. Take a deep breath. I'm here with you. Follow the path on your screen.";
 
-  if (/injured|hurt/.test(text))
-    return "I'm alerting responders to your location. If you can move, go slowly toward the exit. If not, stay put and I'll guide help to you.";
+      (/smoke|can't see/.test(text))
+    turn 'Stay low where the air is clearer. Cover your nose with cloth if possible. Keep following the blue path.';
 
-  if (/exit|how far/.test(text))
-    return `You're about ${distance.toFixed(0)} meters from the nearest exit. Keep moving forward.`;
+      (/injured|hurt/.test(text))
+    turn "I'm alerting responders to your location. If you can move, go slowly toward the exit. If not, stay put and I'll guide help to you.";
 
-  if (/fire/.test(text))
-    return 'Fire detected. Move to the nearest exit immediately. Do not use elevators. Stay low and follow emergency signage.';
+      (/exit|how far/.test(text))
+      turn`You're about ${distance.toFixed(0)} meters from the nearest exit. Keep moving forward.`;
 
-  if (/thank/.test(text))
-    return "You're doing great. Stay focused and keep moving. We're getting you out safely.";
+      (/fire/.test(text))
+    turn 'Fire detected. Move to the nearest exit immediately. Do not use elevators. Stay low and follow emergency signage.';
 
-  return "Stay calm and follow the blue path. I'm monitoring the situation and will update you if anything changes.";
-}
+      (/thank/.test(text))
+    turn "You're doing great. Stay focused and keep moving. We're getting you out safely.";
 
-// =================== API ROUTES ===================
+  turn "Stay calm and follow the blue path. I'm monitoring the situation and will update you if anything changes.";
 
-// Chat endpoint
-aiRouter.post('/chat', async (req, res) => {
-  try {
-    const { message, history = [], emergencyLevel, distanceToExit } = req.body;
 
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'message is required' });
-    }
+ =================== API ROUTES ===================
 
-    const { text: reply, history: updatedHistory } = await getAIResponse(message, {
-      history,
-      emergencyLevel,
-      distanceToExit,
-    });
+ Chat endpoint
+      Router.post('/chat', async (req, res) => {
+  y {
+    nst { message, history = [], emergencyLevel, distanceToExit } = req.body;
 
-    res.json({ reply, history: updatedHistory });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'AI request failed' });
-  }
-});
+          (!message || typeof message !== 'string') {
+      turn res.status(400).json({ error: 'message is required' });
+    
 
-// Test endpoint
-aiRouter.get('/test', (req, res) => {
-  res.json({ message: 'AI router is working!' });
-});
+    nst { text: reply, history: updatedHistory } = await getAIResponse(message, {
+            story,
+            ergencyLevel,
+            stanceToExit,
+    ;
+
+            s.json({ reply, history: updatedHistory });
+  catch (err) {
+              nsole.error(err);
+              s.status(500).json({ error: 'AI request failed' });
+
+              ;
+
+ Test endpoint
+              Router.get('/test', (req, res) => {
+                s.json({ message: 'AI router is working!' });
+                ;

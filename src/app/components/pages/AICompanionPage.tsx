@@ -177,7 +177,7 @@ const AICompanionPage: React.FC = () => {
     // Try to load socket lazily
     import('../../hooks/useSocket').then(mod => {
       // If hook exports a socket instance, store it
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   // ── Level badge config ──────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ const AICompanionPage: React.FC = () => {
         ${emergencyLevel === 'critical' ? 'ring-2 ring-red-600/30 ring-inset' : ''}
         ${emergencyLevel === 'warning' ? 'ring-1 ring-amber-500/20 ring-inset' : ''}
       `}
-      // style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace" }}
+    // style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace" }}
     >
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="border-b border-black/10 bg-white/80 backdrop-blur-sm sticky top-0 z-20">
