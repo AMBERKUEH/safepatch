@@ -1,6 +1,6 @@
 // ai.js
 import { Router } from 'express';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -11,6 +11,29 @@ const SYSTEM_PROMPT = `
 You are AI safety companion for SafePath AI — an emergency evacuation and crisis response system.
 
 Your primary mission is to keep people alive, calm, and moving toward safety during real emergencies.
+
+
+CONVERSATION MODE RULES — READ FIRST BEFORE RESPONDING
+
+Determine which mode applies BEFORE crafting your response:
+
+MODE 1 — CASUAL / GREETING
+Triggers: "hi", "hello", "hey", "how are you", "what's up", "good morning", etc.
+Response style: Short, warm, friendly — 1 to 2 sentences max.
+Example: "Hi there! I'm SafePath AI, your emergency safety companion. How can I help you today?"
+DO NOT use the structured [SITUATION ASSESSMENT] format for greetings.
+
+MODE 2 — EMERGENCY / DISASTER RELATED
+Triggers: Any mention of fire, earthquake, flood, smoke, injury, evacuation, SOS, danger, disaster, medical emergency, active threat, hazmat, collapse, etc.
+Response style: Use the full structured format below (SITUATION ASSESSMENT, IMMEDIATE ACTIONS, etc.)
+This is your primary purpose — respond with full urgency and detail.
+
+MODE 3 — UNRELATED TOPIC
+Triggers: Questions about movies, food, sports, coding, weather (non-disaster), jokes, politics, general knowledge, etc.
+Response style: Short, polite redirect — 2 sentences max.
+Example: "I'm specialized for emergency situations and disaster response only. Is there anything safety-related I can help you with?"
+DO NOT attempt to answer unrelated questions. DO NOT apologize excessively.
+
 
 CORE IDENTITY & PERSONALITY
 - You are calm, authoritative, and compassionate — like a trained emergency dispatcher
@@ -171,21 +194,16 @@ LANGUAGE & TONE
 - Mirror the user's urgency level — if they're panicking, be extra calm and structured
   `;
 
-const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// =================== GEMINI INIT ===================
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
 
 // =================== AI RESPONSE FUNCTION ===================
 async function getAIResponse(userMessage, context = {}) {
-  const history = context.history || [];
-
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_API_KEY_HERE' || process.env.GEMINI_API_KEY.includes('YOUR_')) {
-    console.warn('GEMINI_API_KEY not found or placeholder. Using high-quality structured fallback for demo.');
-    const fallback = getFallbackResponse(userMessage, context, true); // true for structured
-    history.push({ role: 'user', content: userMessage });
-    history.push({ role: 'ai', content: fallback });
-    return { text: fallback, history };
-  }
-
   try {
+    const history = context.history || [];
+
     // Add current user message to history
     history.push({ role: 'user', content: userMessage });
 
@@ -202,15 +220,17 @@ Respond as SafePath AI:
 `;
 
     // Call Gemini
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+    });
+
+    const text = response.text?.trim();
 
     if (text && text.length > 0) {
       // Save AI response into history
       history.push({ role: 'ai', content: text });
-      return { text: text, history };
+      return { text, history };
     }
   } catch (e) {
     console.warn('Gemini request failed:', e.message);
@@ -222,108 +242,57 @@ Respond as SafePath AI:
   return { text: fallback, history };
 }
 
- =================== FALLBACK RESPONSES ===================
-nction getFallbackResponse(input, context, useStructured = false) {
-  nst text = (input || '').toLowerCase();
-  nst distance = context.distanceToExit ?? 15;
+// =================== FALLBACK RESPONSES ===================
+function getFallbackResponse(input, context) {
+  const text = (input || '').toLowerCase();
+  const distance = context.distanceToExit ?? 0;
 
-  (useStructured) {
-    (text.includes('smoke') || text.includes('fire')) {
-      turn`[SITUATION ASSESSMENT]
-You are reporting smoke or fire in the building. This is a life-threatening emergency.
+  if (/scared|afraid|panic/.test(text))
+    return "It's okay to feel scared. Take a deep breath. I'm here with you. Follow the path on your screen.";
 
-[IMMEDIATE ACTIONS — Do these RIGHT NOW]
-1. STAY LOW to the ground where the air is clearer.
-2. EVACUATE immediately toward the nearest exit.
-3. DO NOT use elevators.
-4. CALL 911 when you reach a safe location.
+  if (/smoke|can't see/.test(text))
+    return 'Stay low where the air is clearer. Cover your nose with cloth if possible. Keep following the blue path.';
 
-[NEXT STEPS — Do these after immediate actions]
-1. Follow the blue path on your navigation screen.
-2. Assist others if it does not delay your evacuation.
-3. Close doors behind you to slow the spread of fire.
+  if (/injured|hurt/.test(text))
+    return "I'm alerting responders to your location. If you can move, go slowly toward the exit. If not, stay put and I'll guide help to you.";
 
-[WATCH OUT FOR]
-- Hot door handles (feel with back of hand).
-- Thick smoke blocking visibility.
-- Falling debris.
+  if (/exit|how far/.test(text))
+    return `You're about ${distance.toFixed(0)} meters from the nearest exit. Keep moving forward.`;
 
-[IF SITUATION CHANGES]
-- If trapped, seal door gaps with cloth and signal from a window.
-- If your clothes catch fire: STOP, DROP, and ROLL.
+  if (/fire/.test(text))
+    return 'Fire detected. Move to the nearest exit immediately. Do not use elevators. Stay low and follow emergency signage.';
 
-Tell me what's happening now so I can update your guidance.`;
-    
+  if (/thank/.test(text))
+    return "You're doing great. Stay focused and keep moving. We're getting you out safely.";
 
-     Default structured fallback
-      turn`[SITUATION ASSESSMENT]
-You are requesting guidance during an emergency situation.
+  return "Stay calm and follow the blue path. I'm monitoring the situation and will update you if anything changes.";
+}
 
-[IMMEDIATE ACTIONS — Do these RIGHT NOW]
-1. Locate the nearest emergency exit.
-2. Follow the blue navigation path on your screen.
-3. Stay calm and alert to your surroundings.
+// =================== API ROUTES ===================
 
-[NEXT STEPS — Do these after immediate actions]
-1. Inform others of the situation.
-2. Move steadily toward safety.
+// Chat endpoint
+aiRouter.post('/chat', async (req, res) => {
+  try {
+    const { message, history = [], emergencyLevel, distanceToExit } = req.body;
 
-[WATCH OUT FOR]
-- Potential hazards on your route.
-- Changing conditions.
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'message is required' });
+    }
 
-[IF SITUATION CHANGES]
-- Call 911 immediately if you are in direct danger.
+    const { text: reply, history: updatedHistory } = await getAIResponse(message, {
+      history,
+      emergencyLevel,
+      distanceToExit,
+    });
 
-Tell me what's happening now so I can update your guidance.`;
+    res.json({ reply, history: updatedHistory });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'AI request failed' });
+  }
+});
 
-
-      (/scared|afraid|panic/.test(text))
-    turn "It's okay to feel scared. Take a deep breath. I'm here with you. Follow the path on your screen.";
-
-      (/smoke|can't see/.test(text))
-    turn 'Stay low where the air is clearer. Cover your nose with cloth if possible. Keep following the blue path.';
-
-      (/injured|hurt/.test(text))
-    turn "I'm alerting responders to your location. If you can move, go slowly toward the exit. If not, stay put and I'll guide help to you.";
-
-      (/exit|how far/.test(text))
-      turn`You're about ${distance.toFixed(0)} meters from the nearest exit. Keep moving forward.`;
-
-      (/fire/.test(text))
-    turn 'Fire detected. Move to the nearest exit immediately. Do not use elevators. Stay low and follow emergency signage.';
-
-      (/thank/.test(text))
-    turn "You're doing great. Stay focused and keep moving. We're getting you out safely.";
-
-  turn "Stay calm and follow the blue path. I'm monitoring the situation and will update you if anything changes.";
-
-
- =================== API ROUTES ===================
-
- Chat endpoint
-      Router.post('/chat', async (req, res) => {
-  y {
-    nst { message, history = [], emergencyLevel, distanceToExit } = req.body;
-
-          (!message || typeof message !== 'string') {
-      turn res.status(400).json({ error: 'message is required' });
-    
-
-    nst { text: reply, history: updatedHistory } = await getAIResponse(message, {
-            story,
-            ergencyLevel,
-            stanceToExit,
-    ;
-
-            s.json({ reply, history: updatedHistory });
-  catch (err) {
-              nsole.error(err);
-              s.status(500).json({ error: 'AI request failed' });
-
-              ;
-
- Test endpoint
-              Router.get('/test', (req, res) => {
-                s.json({ message: 'AI router is working!' });
-                ;
+// Test endpoint
+aiRouter.get('/test', (req, res) => {
+  res.json({ message: 'AI router is working!' });
+});
